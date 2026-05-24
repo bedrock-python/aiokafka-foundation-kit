@@ -32,7 +32,8 @@ class KafkaSaslMixin(BaseModel):
         """Plaintext SASL password for Kafka client config. Do NOT log."""
         if self.sasl_password is None:
             return None
-        return self.sasl_password.get_secret_value()
+        secret: str = self.sasl_password.get_secret_value()
+        return secret
 
 
 class KafkaSslMixin(BaseModel):
