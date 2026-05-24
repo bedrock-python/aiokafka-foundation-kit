@@ -5,6 +5,7 @@ on:
     types: [published]
 
 permissions:
+  contents: read
   id-token: write   # Trusted Publisher (PyPI OIDC)
 
 jobs:
@@ -15,5 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
+      - name: Set version from release tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#aiokafka-foundation-kit-v}"
+          echo "__version__ = \"$VERSION\"" > aiokafka_foundation_kit/__version__.py
       - run: uv build
       - run: uv publish

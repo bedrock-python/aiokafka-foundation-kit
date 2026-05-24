@@ -2,16 +2,9 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "packages": {
     ".": {
-      "release-type": "simple",
+      "release-type": "python",
       "package-name": "aiokafka-foundation-kit",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "aiokafka_foundation_kit/__version__.py",
-          "search": "__version__ = \"$1\""
-        }
-      ]
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }
