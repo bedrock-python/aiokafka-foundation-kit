@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.0...aiokafka-foundation-kit-v0.1.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* **publish:** trigger via workflow_run instead of release event ([6e4c5db](https://github.com/bedrock-python/aiokafka-foundation-kit/commit/6e4c5dbb464767f066319620ec687eb2c6541a15))
+
 ## 0.1.0 (2026-05-24)
 
 
