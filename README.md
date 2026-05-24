@@ -1,8 +1,11 @@
 # aiokafka-foundation-kit
 
-[![PyPI version](https://img.shields.io/pypi/v/aiokafka-foundation-kit.svg)](https://pypi.org/project/aiokafka-foundation-kit/)
-[![Python versions](https://img.shields.io/pypi/pyversions/aiokafka-foundation-kit.svg)](https://pypi.org/project/aiokafka-foundation-kit/)
-[![License](https://img.shields.io/github/license/bedrock-python/aiokafka-foundation-kit.svg)](https://github.com/bedrock-python/aiokafka-foundation-kit/blob/master/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/aiokafka-foundation-kit?color=blue)](https://pypi.org/project/aiokafka-foundation-kit/)
+[![Python](https://img.shields.io/pypi/pyversions/aiokafka-foundation-kit)](https://pypi.org/project/aiokafka-foundation-kit/)
+[![License](https://img.shields.io/github/license/bedrock-python/aiokafka-foundation-kit)](LICENSE)
+[![CI](https://github.com/bedrock-python/aiokafka-foundation-kit/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/bedrock-python/aiokafka-foundation-kit/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/bedrock-python/aiokafka-foundation-kit/graph/badge.svg)](https://codecov.io/gh/bedrock-python/aiokafka-foundation-kit)
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://bedrock-python.github.io/aiokafka-foundation-kit/)
 
 Async Kafka foundation library with producer, consumer, metrics, and Dishka providers built on [aiokafka](https://github.com/aio-libs/aiokafka).
 
