@@ -32,7 +32,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev --all-extras
-      - run: uv run pytest -m unit
+      - run: uv run pytest -m unit --cov=aiokafka_foundation_kit --cov-report=xml --cov-fail-under=90
+      - uses: codecov/codecov-action@v6
+        if: matrix.python-version == '3.12'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+        continue-on-error: true
 
   test-integration:
     name: Integration tests
@@ -42,12 +48,13 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --group dev --all-extras
-      - run: uv run pytest -m integration --cov=aiokafka_foundation_kit --cov-report=xml --cov-fail-under=90
-      - uses: codecov/codecov-action@v6
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.xml
-        continue-on-error: true
+      - name: Run integration tests
+        run: |
+          set +e
+          uv run pytest -m integration
+          STATUS=$?
+          set -e
+          test $STATUS -eq 0 -o $STATUS -eq 5
 
   # Sentinel job — use this as the single required status check in branch protection.
   all-checks-passed:
