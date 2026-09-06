@@ -185,7 +185,8 @@ KafkaSettingsProtocol             = SASL + SSL, the base every entry point accep
 
 Note that the password is a **method**, `get_sasl_password() -> str | None`, not an
 attribute. `TopicConfigProtocol` is `name`, `num_partitions`, `replication_factor`,
-`replica_assignment`, `topic_configs`.
+`replica_assignment`, `topic_configs`, declared read-only so that a frozen dataclass — the
+kit's own `TopicConfig` among them — type-checks where the protocol is expected.
 
 ### Pydantic settings — `contrib.models`
 
@@ -260,7 +261,7 @@ The mixins are exported separately for composing your own model:
 |---|---|---|
 | `AsyncKafkaProducerProvider` | `AIOKafkaProducer` | `ProducerLifecycleSettingsProtocol` and `Sequence[TopicConfigProtocol] | None` |
 | `AsyncKafkaConsumerProvider` | `AIOKafkaConsumer` | `ConsumerSettingsProtocol` and `tuple[str, ...] | None` |
-| `KafkaInfraProvider` | `Sequence[TopicConfig]` and `tuple[str, ...]` | `KafkaProducerInfraSettingsProtocol` and `KafkaConsumerInfraSettingsProtocol` |
+| `KafkaInfraProvider` | `Sequence[TopicConfig]`, `tuple[str, ...]`, and both of those under the optional types the two providers above ask for | `KafkaProducerInfraSettingsProtocol` and `KafkaConsumerInfraSettingsProtocol` |
 
 `AsyncKafkaProducerProvider` is the only place `settings.auto_create_topics` is read.
 `KafkaInfraProvider` turns `topic_catalog` into `TopicConfig` objects and
@@ -269,7 +270,8 @@ The infrastructure protocols — `KafkaInfraBaseSettingsProtocol`,
 `KafkaProducerInfraSettingsProtocol`, `KafkaConsumerInfraSettingsProtocol`,
 `KafkaTopicSettingsProtocol` — are exported for the settings side.
 
-The two sets of types do not line up on their own; see rule 10.
+Adding `KafkaInfraProvider` to a container is therefore enough to satisfy the topics
+argument of both client providers; see rule 10 for a container without it.
 
 ### dependency-injector — `contrib.dependency_injector`
 
@@ -343,11 +345,11 @@ Extra `**kwargs` go straight to the instrumentor.
    `asyncio.CancelledError`, a `TimeoutError` — propagates out of the context manager and
    can mask the body's own exception.
 10. **dishka resolves by exact type, and the kit's providers ask for optionals.**
-    `AsyncKafkaProducerProvider` wants `Sequence[TopicConfigProtocol] | None`, while
-    `KafkaInfraProvider` supplies `Sequence[TopicConfig]`; the consumer wants
-    `tuple[str, ...] | None` against a supplied `tuple[str, ...]`. Python's `= None`
-    default is not a dishka default, so a container holding both providers fails to build
-    with `GraphMissingFactoryError`. Add a one-method bridge provider (see
+    `AsyncKafkaProducerProvider` wants `Sequence[TopicConfigProtocol] | None` and
+    `AsyncKafkaConsumerProvider` wants `tuple[str, ...] | None`. Python's `= None` default
+    is not a dishka default, so something in the container has to provide those exact
+    types or the build fails with `GraphMissingFactoryError`. `KafkaInfraProvider`
+    provides both; without it, write the one-line factory yourself (see
     [Common mistakes](#common-mistakes)).
 11. **`Dependency(default=None)` is not a default.** dependency-injector treats `None` as
     "unset", so `KafkaProducerContainer` and `KafkaConsumerContainer` raise
@@ -437,24 +439,24 @@ await producer.send_and_wait("orders", {"id": 42}, key=b"order-42")
 ```
 
 ```python
-# WRONG — the two providers do not compose; the container refuses to build
+# WRONG — nothing provides Sequence[TopicConfigProtocol] | None, and the `= None`
+# on the provider's parameter is not a dishka default; the container refuses to build
+container = make_async_container(SettingsProvider(), AsyncKafkaProducerProvider())
+
+# RIGHT — KafkaInfraProvider provides that exact type from the topic catalog
 container = make_async_container(SettingsProvider(), KafkaInfraProvider(),
                                  AsyncKafkaProducerProvider())
 
-# RIGHT — bridge the exact type keys the kit's providers ask for
-class KafkaBridgeProvider(Provider):
+# ALSO RIGHT — no catalog, so provide the type yourself
+class TopicsProvider(Provider):
     scope = Scope.APP
 
     @provide
-    def producer_topics(self, configs: Sequence[TopicConfig]) -> Sequence[TopicConfigProtocol] | None:
-        return configs
+    def producer_topics(self) -> Sequence[TopicConfigProtocol] | None:
+        return None
 
-    @provide
-    def consumer_topics(self, names: tuple[str, ...]) -> tuple[str, ...] | None:
-        return names
-
-container = make_async_container(SettingsProvider(), KafkaInfraProvider(),
-                                 KafkaBridgeProvider(), AsyncKafkaProducerProvider())
+container = make_async_container(SettingsProvider(), TopicsProvider(),
+                                 AsyncKafkaProducerProvider())
 ```
 
 ## Errors

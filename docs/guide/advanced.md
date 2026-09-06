@@ -15,16 +15,29 @@ Manages the `AIOKafkaProducer` at `APP` scope (started once, stopped on shutdown
 Automatically creates topics when `settings.auto_create_topics` is `True`.
 
 ```python
-from dishka import make_async_container
+from collections.abc import Sequence
+
+from dishka import Provider, Scope, make_async_container, provide
+
+from aiokafka_foundation_kit.config.producer import ProducerLifecycleSettingsProtocol
+from aiokafka_foundation_kit.config.topic import TopicConfigProtocol
 from aiokafka_foundation_kit.contrib.di import AsyncKafkaProducerProvider
 from aiokafka_foundation_kit.contrib.models import BaseKafkaProducerSettings
 
-settings = BaseKafkaProducerSettings(bootstrap_servers="localhost:9092")
 
-container = make_async_container(
-    AsyncKafkaProducerProvider(),
-    # Provide the settings object to the container
-)
+class AppProvider(Provider):
+    scope = Scope.APP
+
+    @provide
+    def kafka_settings(self) -> ProducerLifecycleSettingsProtocol:
+        return BaseKafkaProducerSettings(bootstrap_servers="localhost:9092")
+
+    @provide
+    def topics(self) -> Sequence[TopicConfigProtocol] | None:
+        return None
+
+
+container = make_async_container(AppProvider(), AsyncKafkaProducerProvider())
 ```
 
 The provider's `get_kafka_producer` method signature:
@@ -37,6 +50,10 @@ async def get_kafka_producer(
     topics: Sequence[TopicConfigProtocol] | None = None,
 ) -> AsyncIterator[AIOKafkaProducer]: ...
 ```
+
+Dishka resolves by exact type and ignores the Python `= None` default, so the container must
+hold a factory for `Sequence[TopicConfigProtocol] | None` — provide it yourself as above, or
+add `KafkaInfraProvider`, which supplies it from the topic catalog.
 
 Inject `AIOKafkaProducer` wherever you need to send messages:
 
@@ -72,6 +89,9 @@ async def get_kafka_consumer(
 ) -> AsyncIterator[AIOKafkaConsumer]: ...
 ```
 
+Same rule as the producer: the container needs a factory for `tuple[str, ...] | None`, either
+your own or `KafkaInfraProvider`.
+
 ### KafkaInfraProvider
 
 Resolves physical topic names (with optional prefix) from a logical catalog. Typically used
@@ -98,6 +118,20 @@ infra_settings = BaseKafkaInfraSettings(
 
 - `Sequence[TopicConfig]` — physical topic configs with prefix applied, e.g. `prod.orders`.
 - `tuple[str, ...]` — resolved consumer subscription topics, e.g. `("prod.orders",)`.
+- the same two values under `Sequence[TopicConfigProtocol] | None` and `tuple[str, ...] | None`,
+  which are the exact types `AsyncKafkaProducerProvider` and `AsyncKafkaConsumerProvider` ask
+  the container for.
+
+So the three providers compose directly:
+
+```python
+container = make_async_container(
+    AppProvider(),                 # settings, including the infra settings
+    KafkaInfraProvider(),
+    AsyncKafkaProducerProvider(),
+    AsyncKafkaConsumerProvider(),
+)
+```
 
 ---
 

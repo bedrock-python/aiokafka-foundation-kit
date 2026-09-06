@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Protocol
 
+from aiokafka_foundation_kit.config.topic import TopicConfigProtocol
 from aiokafka_foundation_kit.topics.config import TopicConfig
 
 from ._deps import Provider, Scope, check_dishka, provide
@@ -93,3 +94,23 @@ class KafkaInfraProvider(Provider):
 
         prefix = settings.topic_prefix
         return tuple(_apply_topic_prefix(prefix, topic) for topic in subscriptions)
+
+    @provide
+    def get_optional_topic_configs(
+        self,
+        topic_configs: Sequence[TopicConfig],
+    ) -> Sequence[TopicConfigProtocol] | None:
+        """Provide the same topic configs under the type ``AsyncKafkaProducerProvider`` asks for.
+
+        Dishka resolves by exact type, so the concrete ``Sequence[TopicConfig]`` above does
+        not satisfy the producer provider's optional parameter on its own.
+        """
+        return topic_configs
+
+    @provide
+    def get_optional_consumer_subscription_topics(
+        self,
+        topics: tuple[str, ...],
+    ) -> tuple[str, ...] | None:
+        """Provide the same subscriptions under the type ``AsyncKafkaConsumerProvider`` asks for."""
+        return topics
