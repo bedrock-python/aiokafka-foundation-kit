@@ -1,18 +1,47 @@
 """Kafka configuration utilities."""
 
+import ssl
 from typing import Any
 
-from aiokafka_foundation_kit.config.kafka import KafkaSettingsProtocol
+from aiokafka.helpers import create_ssl_context
+
+from aiokafka_foundation_kit.config.kafka import KafkaSettingsProtocol, KafkaSslSettingsProtocol
+
+
+def _build_ssl_context(settings: KafkaSslSettingsProtocol) -> ssl.SSLContext:
+    """Build the ``ssl.SSLContext`` aiokafka expects for SSL/SASL_SSL.
+
+    aiokafka takes a prepared context, not the individual file paths, so the
+    ``ssl_*`` fields are loaded here. With no ``ssl_cafile`` the system trust
+    store is used.
+    """
+    context: ssl.SSLContext = create_ssl_context(
+        cafile=settings.ssl_cafile,
+        certfile=settings.ssl_certfile,
+        keyfile=settings.ssl_keyfile,
+    )
+    if not settings.ssl_check_hostname:
+        context.check_hostname = False
+
+    return context
 
 
 def build_kafka_common_config(settings: KafkaSettingsProtocol) -> dict[str, Any]:
     """Build common Kafka client configuration from settings.
+
+    For ``SSL`` and ``SASL_SSL`` the ``ssl_*`` settings are loaded into an
+    ``ssl.SSLContext`` and passed as ``ssl_context``, which is the only TLS
+    parameter aiokafka accepts.
 
     Args:
         settings: Kafka settings object conforming to KafkaSettingsProtocol.
 
     Returns:
         Dictionary of Kafka client configuration parameters.
+
+    Raises:
+        OSError: If a configured certificate or key file cannot be read.
+        ssl.SSLError: If a configured certificate or key file cannot be parsed.
     """
     config: dict[str, Any] = {
         "bootstrap_servers": settings.bootstrap_servers,
@@ -29,12 +58,6 @@ def build_kafka_common_config(settings: KafkaSettingsProtocol) -> dict[str, Any]
         config["sasl_plain_password"] = settings.get_sasl_password()
 
     if settings.security_protocol in ("SSL", "SASL_SSL"):
-        if settings.ssl_cafile:
-            config["ssl_cafile"] = settings.ssl_cafile
-        if settings.ssl_certfile:
-            config["ssl_certfile"] = settings.ssl_certfile
-        if settings.ssl_keyfile:
-            config["ssl_keyfile"] = settings.ssl_keyfile
-        config["ssl_check_hostname"] = settings.ssl_check_hostname
+        config["ssl_context"] = _build_ssl_context(settings)
 
     return config

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from aiokafka import AIOKafkaProducer
+
 from aiokafka_foundation_kit.producer.client import create_async_kafka_producer
 from aiokafka_foundation_kit.utils.json import dumps_bytes
 
@@ -104,3 +106,35 @@ def test__create_async_kafka_producer__custom_serializer__uses_custom(producer_s
     # Assert
     _, kwargs = mock_cls.call_args
     assert kwargs["value_serializer"] is custom_ser
+
+
+# ---------------------------------------------------------------------------
+# TLS — aiokafka only accepts a prepared ssl_context
+# ---------------------------------------------------------------------------
+
+
+async def test__create_async_kafka_producer__ssl_settings__constructs_real_producer(producer_settings):
+    # Arrange — no cafile, so the system trust store is used and no file is read
+    producer_settings.security_protocol = "SSL"
+    producer_settings.ssl_cafile = None
+
+    # Act
+    result = create_async_kafka_producer(producer_settings)
+
+    # Assert
+    assert isinstance(result, AIOKafkaProducer)
+
+
+async def test__create_async_kafka_producer__sasl_ssl_settings__constructs_real_producer(producer_settings):
+    # Arrange
+    producer_settings.security_protocol = "SASL_SSL"
+    producer_settings.sasl_mechanism = "PLAIN"
+    producer_settings.sasl_username = "user"
+    producer_settings.get_sasl_password.return_value = "pw"
+    producer_settings.ssl_cafile = None
+
+    # Act
+    result = create_async_kafka_producer(producer_settings)
+
+    # Assert
+    assert isinstance(result, AIOKafkaProducer)

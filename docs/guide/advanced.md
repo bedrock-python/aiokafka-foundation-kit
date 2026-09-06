@@ -270,3 +270,6 @@ common = build_kafka_common_config(settings)
 
 producer = AIOKafkaProducer(**common, max_request_size=10_485_760)
 ```
+
+For `SSL` and `SASL_SSL` the dict carries a ready `ssl_context` built from the settings'
+`ssl_*` fields — see [How the TLS fields reach aiokafka](configuration.md#how-the-tls-fields-reach-aiokafka).

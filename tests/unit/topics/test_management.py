@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -289,3 +290,39 @@ async def test__ensure_topics_async__create_raises_unexpected_error__close_still
 
     # Assert — close still called in finally
     mock_admin.close.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# TLS — the admin client only accepts a prepared ssl_context
+# ---------------------------------------------------------------------------
+
+
+async def test__ensure_topics_async__ssl_settings__passes_ssl_context_to_admin_client(
+    plaintext_settings,
+):
+    # Arrange — no cafile, so the system trust store is used and no file is read
+    plaintext_settings.security_protocol = "SSL"
+    plaintext_settings.ssl_cafile = None
+
+    mock_admin = MagicMock()
+    mock_admin.start = AsyncMock()
+    mock_admin.close = AsyncMock()
+    mock_admin.create_topics = AsyncMock()
+
+    topics = [TopicConfig(name="events", num_partitions=1, replication_factor=1)]
+
+    with (
+        patch(
+            "aiokafka_foundation_kit.topics.management.AIOKafkaAdminClient",
+            return_value=mock_admin,
+        ) as mock_admin_cls,
+        patch("aiokafka_foundation_kit.topics.management.NewTopic", return_value=MagicMock()),
+    ):
+        # Act
+        await ensure_topics_async(topics, plaintext_settings)
+
+    # Assert
+    _, kwargs = mock_admin_cls.call_args
+    assert isinstance(kwargs["ssl_context"], ssl.SSLContext)
+    assert "ssl_cafile" not in kwargs
+    assert "ssl_check_hostname" not in kwargs

@@ -148,6 +148,22 @@ settings = BaseKafkaProducerSettings(
 )
 ```
 
+### How the TLS fields reach aiokafka
+
+aiokafka takes a prepared `ssl.SSLContext`, not certificate paths. For `SSL` and `SASL_SSL`,
+`build_kafka_common_config` loads the three `ssl_*` paths through
+[`aiokafka.helpers.create_ssl_context`](https://aiokafka.readthedocs.io/en/stable/api.html#helpers)
+and passes the result as `ssl_context`; the individual paths never reach the client.
+
+Two consequences worth knowing:
+
+- The certificate files are read when the client is built, so a missing or unreadable file
+  raises `FileNotFoundError` (a malformed one `ssl.SSLError`) from
+  `create_async_kafka_producer` / `create_async_kafka_consumer` / `ensure_topics_async`,
+  not on the first connection attempt. With no `ssl_cafile`, the system trust store is used.
+- `ssl_check_hostname=False` sets `check_hostname = False` on the context. The broker
+  certificate is still verified against the CA — only the hostname match is skipped.
+
 ---
 
 ## Loading settings from environment

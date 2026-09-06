@@ -301,15 +301,16 @@ Extra `**kwargs` go straight to the instrumentor.
    aiokafka's constructor takes the running loop. Called at import time or from
    synchronous module scope it raises
    `RuntimeError: The object should be created within an async function or provide loop directly.`
-2. **TLS does not currently work through these helpers.**
-   `build_kafka_common_config` emits `ssl_cafile`, `ssl_certfile`, `ssl_keyfile` and
-   `ssl_check_hostname` for `SSL` and `SASL_SSL`, and aiokafka accepts none of them — it takes a
-   prepared `ssl_context`. Any `SSL` or `SASL_SSL` settings object therefore
-   raises `TypeError: … got an unexpected keyword argument 'ssl_check_hostname'` from the
-   producer, the consumer and `ensure_topics_async` alike. Build the client yourself until
-   that is fixed: take the dict, drop the four `ssl_*` keys, and pass
-   `ssl_context=aiokafka.helpers.create_ssl_context(cafile=…, certfile=…, keyfile=…)`.
-   `SASL_PLAINTEXT` and `PLAINTEXT` are unaffected.
+2. **TLS reaches aiokafka as one `ssl_context` key.** aiokafka takes a prepared
+   `ssl.SSLContext` and nothing else, so for `SSL` and `SASL_SSL`
+   `build_kafka_common_config` loads `ssl_cafile`, `ssl_certfile` and `ssl_keyfile` through
+   `aiokafka.helpers.create_ssl_context` and returns `ssl_context`; the four `ssl_*` keys
+   never appear in the dict. The files are read at that moment, so a missing or unreadable
+   one raises `FileNotFoundError` (a malformed one `ssl.SSLError`) from the factory rather
+   than at connect time, and with no `ssl_cafile` the system trust store is used.
+   `ssl_check_hostname=False` sets `check_hostname = False` on the context — the
+   certificate is still verified against the CA, only the hostname is not.
+   `SASL_PLAINTEXT` and `PLAINTEXT` build no context at all.
 3. **`producer_lifecycle` does not read `settings.auto_create_topics`.** It has its own
    keyword, defaulting to `False`, and creates topics only when `auto_create_topics=True`
    *and* `topics` is non-empty. Passing one without the other silently creates nothing.
@@ -465,7 +466,7 @@ The library defines no exception class of its own. What you will see:
 | `ImportError` | instantiating a contrib provider or container, or calling `instrument_aiokafka`, without the extra. The message names the extra to install. |
 | `pydantic.ValidationError` | a `contrib.models` settings object: a missing `bootstrap_servers` or `group_id`, a value outside a `Literal`, an incomplete `SASL_*` or `SSL` block, `auto_create_topics=True` with no `default_replication_factor`. |
 | `RuntimeError` | a client built outside a running loop, or a compression codec whose library is missing. |
-| `TypeError` | `SSL` / `SASL_SSL` settings reaching aiokafka — see rule 2. |
+| `FileNotFoundError`, `ssl.SSLError` | a TLS certificate or key path that cannot be read or parsed, raised while the settings are translated — see rule 2. |
 | `ValueError` | `acks` of `"0"` or `"1"` while `enable_idempotence` is on. |
 | `AttributeError` | a settings object that does not satisfy the protocol. |
 | `aiokafka.errors.KafkaError` and its subclasses | every broker interaction. `TopicAlreadyExistsError` is the one `ensure_topics_async` handles; `KafkaConnectionError`, `KafkaTimeoutError`, `NodeNotReadyError`, `UnknownTopicOrPartitionError`, `CommitFailedError` and the rest reach you unchanged. |

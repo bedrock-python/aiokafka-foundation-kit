@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ssl
+from unittest.mock import patch
+
 import pytest
 
 from aiokafka_foundation_kit.utils.config import build_kafka_common_config
@@ -66,6 +69,7 @@ def test__build_kafka_common_config__plaintext__does_not_include_ssl_keys(plaint
     assert "ssl_certfile" not in result
     assert "ssl_keyfile" not in result
     assert "ssl_check_hostname" not in result
+    assert "ssl_context" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -104,8 +108,7 @@ def test__build_kafka_common_config__sasl_plaintext__does_not_include_ssl_keys()
     result = build_kafka_common_config(settings)
 
     # Assert
-    assert "ssl_cafile" not in result
-    assert "ssl_check_hostname" not in result
+    assert "ssl_context" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -113,16 +116,13 @@ def test__build_kafka_common_config__sasl_plaintext__does_not_include_ssl_keys()
 # ---------------------------------------------------------------------------
 
 
-def test__build_kafka_common_config__sasl_ssl__includes_both_sasl_and_ssl_keys():
-    # Arrange
+def test__build_kafka_common_config__sasl_ssl__includes_sasl_keys_and_ssl_context():
+    # Arrange — no cafile, so the system trust store is used and no file is read
     settings = make_kafka_settings(
         security_protocol="SASL_SSL",
         sasl_mechanism="SCRAM-SHA-256",
         sasl_username="user",
-        ssl_cafile="/ca.pem",
-        ssl_certfile="/cert.pem",
-        ssl_keyfile="/key.pem",
-        ssl_check_hostname=True,
+        ssl_cafile=None,
     )
     settings.get_sasl_password.return_value = "s3cr3t"
 
@@ -133,33 +133,7 @@ def test__build_kafka_common_config__sasl_ssl__includes_both_sasl_and_ssl_keys()
     assert result["sasl_mechanism"] == "SCRAM-SHA-256"
     assert result["sasl_plain_username"] == "user"
     assert result["sasl_plain_password"] == "s3cr3t"
-    assert result["ssl_cafile"] == "/ca.pem"
-    assert result["ssl_certfile"] == "/cert.pem"
-    assert result["ssl_keyfile"] == "/key.pem"
-    assert result["ssl_check_hostname"] is True
-
-
-def test__build_kafka_common_config__sasl_ssl__omits_ssl_files_when_none():
-    # Arrange — no certfile/keyfile; only cafile
-    settings = make_kafka_settings(
-        security_protocol="SASL_SSL",
-        sasl_mechanism="PLAIN",
-        sasl_username="user",
-        ssl_cafile="/ca.pem",
-        ssl_certfile=None,
-        ssl_keyfile=None,
-        ssl_check_hostname=False,
-    )
-    settings.get_sasl_password.return_value = "pw"
-
-    # Act
-    result = build_kafka_common_config(settings)
-
-    # Assert
-    assert result["ssl_cafile"] == "/ca.pem"
-    assert "ssl_certfile" not in result
-    assert "ssl_keyfile" not in result
-    assert result["ssl_check_hostname"] is False
+    assert isinstance(result["ssl_context"], ssl.SSLContext)
 
 
 # ---------------------------------------------------------------------------
@@ -167,43 +141,79 @@ def test__build_kafka_common_config__sasl_ssl__omits_ssl_files_when_none():
 # ---------------------------------------------------------------------------
 
 
-def test__build_kafka_common_config__ssl__includes_ssl_keys_no_sasl():
+def test__build_kafka_common_config__ssl__returns_ssl_context_and_no_sasl_keys():
+    # Arrange
+    settings = make_kafka_settings(security_protocol="SSL", ssl_cafile=None)
+
+    # Act
+    result = build_kafka_common_config(settings)
+
+    # Assert
+    assert isinstance(result["ssl_context"], ssl.SSLContext)
+    assert "sasl_mechanism" not in result
+
+
+def test__build_kafka_common_config__ssl__does_not_emit_raw_ssl_file_keys():
+    # Arrange — aiokafka accepts none of these; only ssl_context
+    settings = make_kafka_settings(security_protocol="SSL", ssl_cafile=None)
+
+    # Act
+    result = build_kafka_common_config(settings)
+
+    # Assert
+    assert "ssl_cafile" not in result
+    assert "ssl_certfile" not in result
+    assert "ssl_keyfile" not in result
+    assert "ssl_check_hostname" not in result
+
+
+def test__build_kafka_common_config__ssl__forwards_cert_paths_to_context_builder():
     # Arrange
     settings = make_kafka_settings(
         security_protocol="SSL",
         ssl_cafile="/ca.pem",
         ssl_certfile="/cert.pem",
         ssl_keyfile="/key.pem",
-        ssl_check_hostname=True,
     )
+
+    # Act
+    with patch("aiokafka_foundation_kit.utils.config.create_ssl_context") as mock_create:
+        result = build_kafka_common_config(settings)
+
+    # Assert
+    mock_create.assert_called_once_with(cafile="/ca.pem", certfile="/cert.pem", keyfile="/key.pem")
+    assert result["ssl_context"] is mock_create.return_value
+
+
+def test__build_kafka_common_config__ssl_check_hostname_true__context_checks_hostname():
+    # Arrange
+    settings = make_kafka_settings(security_protocol="SSL", ssl_cafile=None, ssl_check_hostname=True)
 
     # Act
     result = build_kafka_common_config(settings)
 
     # Assert
-    assert result["ssl_cafile"] == "/ca.pem"
-    assert result["ssl_certfile"] == "/cert.pem"
-    assert result["ssl_keyfile"] == "/key.pem"
-    assert result["ssl_check_hostname"] is True
-    assert "sasl_mechanism" not in result
+    assert result["ssl_context"].check_hostname is True
 
 
-def test__build_kafka_common_config__ssl__omits_ssl_files_when_falsy():
-    # Arrange — no certfile/keyfile
-    settings = make_kafka_settings(
-        security_protocol="SSL",
-        ssl_cafile="/ca.pem",
-        ssl_certfile=None,
-        ssl_keyfile=None,
-        ssl_check_hostname=True,
-    )
+def test__build_kafka_common_config__ssl_check_hostname_false__context_skips_hostname_check():
+    # Arrange
+    settings = make_kafka_settings(security_protocol="SSL", ssl_cafile=None, ssl_check_hostname=False)
 
     # Act
     result = build_kafka_common_config(settings)
 
     # Assert
-    assert "ssl_certfile" not in result
-    assert "ssl_keyfile" not in result
+    assert result["ssl_context"].check_hostname is False
+
+
+def test__build_kafka_common_config__ssl__missing_cafile__raises_os_error():
+    # Arrange
+    settings = make_kafka_settings(security_protocol="SSL", ssl_cafile="/nonexistent/ca.pem")
+
+    # Act / Assert
+    with pytest.raises(FileNotFoundError):
+        build_kafka_common_config(settings)
 
 
 # ---------------------------------------------------------------------------
@@ -218,8 +228,7 @@ def test__build_kafka_common_config__sasl_protocols__always_set_sasl_keys(protoc
         security_protocol=protocol,
         sasl_mechanism="PLAIN",
         sasl_username="u",
-        ssl_cafile="/ca.pem" if protocol == "SASL_SSL" else None,
-        ssl_check_hostname=True,
+        ssl_cafile=None,
     )
     settings.get_sasl_password.return_value = "p"
 
@@ -233,14 +242,13 @@ def test__build_kafka_common_config__sasl_protocols__always_set_sasl_keys(protoc
 
 
 @pytest.mark.parametrize("protocol", ["SSL", "SASL_SSL"])
-def test__build_kafka_common_config__ssl_protocols__always_set_ssl_check_hostname(protocol: str):
+def test__build_kafka_common_config__ssl_protocols__always_set_ssl_context(protocol: str):
     # Arrange
     settings = make_kafka_settings(
         security_protocol=protocol,
         sasl_mechanism="PLAIN" if protocol == "SASL_SSL" else None,
         sasl_username="u" if protocol == "SASL_SSL" else None,
-        ssl_cafile="/ca.pem",
-        ssl_check_hostname=True,
+        ssl_cafile=None,
     )
     settings.get_sasl_password.return_value = "p" if protocol == "SASL_SSL" else None
 
@@ -248,4 +256,4 @@ def test__build_kafka_common_config__ssl_protocols__always_set_ssl_check_hostnam
     result = build_kafka_common_config(settings)
 
     # Assert
-    assert "ssl_check_hostname" in result
+    assert isinstance(result["ssl_context"], ssl.SSLContext)
