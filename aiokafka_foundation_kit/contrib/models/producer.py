@@ -10,7 +10,14 @@ from .kafka import BaseKafkaSettings
 
 
 class KafkaAutoCreateMixin(BaseModel):
-    """Mixin with topic auto-creation settings (kept separate from transport config)."""
+    """Mixin with topic auto-creation settings (kept separate from transport config).
+
+    Only ``auto_create_topics`` is read by the library. The partition count and
+    replication factor of a created topic come from the ``TopicConfig`` objects
+    passed to :func:`~aiokafka_foundation_kit.producer.lifecycle.producer_lifecycle`
+    or :func:`~aiokafka_foundation_kit.topics.management.ensure_topics_async`; the
+    two ``default_*`` fields below are the caller's own defaults.
+    """
 
     auto_create_topics: bool = Field(
         default=False,
@@ -19,12 +26,12 @@ class KafkaAutoCreateMixin(BaseModel):
     default_partitions: int = Field(
         default=3,
         ge=1,
-        description="Default partitions for new topics",
+        description="Caller-side default partition count; not read by the library",
     )
     default_replication_factor: int | None = Field(
         default=None,
         ge=1,
-        description="Default replication factor for new topics",
+        description="Caller-side default replication factor; not read by the library",
     )
 
 

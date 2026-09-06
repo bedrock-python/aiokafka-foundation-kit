@@ -86,9 +86,17 @@ Extends `BaseKafkaSettings` + `KafkaAutoCreateMixin`.
 | `max_batch_size` | `int` | `16384` | Maximum batch size in bytes (16 KiB) |
 | `linger_ms` | `int` | `5` | Time to wait before sending a partial batch (ms) |
 | `request_timeout_ms` | `int` | `30000` | Request timeout (ms) |
-| `auto_create_topics` | `bool` | `False` | Create declared topics on startup |
-| `default_partitions` | `int` | `3` | Partition count for auto-created topics |
-| `default_replication_factor` | `int \| None` | `None` | Replication factor for auto-created topics (**required** when `auto_create_topics=True`) |
+| `auto_create_topics` | `bool` | `False` | Read by `AsyncKafkaProducerProvider` to decide whether to create topics on startup |
+| `default_partitions` | `int` | `3` | Your own default; not read by the library |
+| `default_replication_factor` | `int \| None` | `None` | Your own default; not read by the library (**required** when `auto_create_topics=True`) |
+
+!!! warning "`default_partitions` and `default_replication_factor` are not applied"
+    Nothing in the library reads these two fields. The shape of a created topic comes from
+    the `TopicConfig` objects you pass to `producer_lifecycle` / `ensure_topics_async`, or
+    from the `KafkaTopicSettings` entries in a `topic_catalog` — both carry their own
+    `num_partitions` and `replication_factor`. The fields remain as a place to keep a
+    service-wide default of your own, and a validator still requires
+    `default_replication_factor` when `auto_create_topics=True`.
 
 ### BaseKafkaInfraSettings
 
