@@ -113,3 +113,62 @@ async def test__consumer_resource__no_topics__passes_none(consumer_settings):
 
     # Assert
     assert captured["topics"] is None
+
+
+# ---------------------------------------------------------------------------
+# Container wiring — topics must not have to be overridden
+# ---------------------------------------------------------------------------
+
+
+async def test__kafka_consumer_container__topics_not_overridden__resolves_consumer(consumer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    mock_consumer = MagicMock()
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, *, topics=None, **kw):
+        yield mock_consumer
+
+    container = KafkaConsumerContainer()
+    container.kafka_settings.override(consumer_settings)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.consumer.consumer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        result = await container.consumer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert result is mock_consumer
+
+
+async def test__kafka_consumer_container__topics_overridden__passes_them_to_lifecycle(consumer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    captured: dict = {}
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, *, topics=None, **kw):
+        captured["topics"] = topics
+        yield MagicMock()
+
+    container = KafkaConsumerContainer()
+    container.kafka_settings.override(consumer_settings)
+    container.topics.override(("orders", "payments"))
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.consumer.consumer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        await container.consumer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert captured["topics"] == ("orders", "payments")

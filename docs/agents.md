@@ -279,12 +279,12 @@ argument of both client providers; see rule 10 for a container without it.
 
 | Container | Providers |
 |---|---|
-| `KafkaProducerContainer` | `kafka_settings` (`Dependency`), `topics` (`Dependency`), `auto_create_topics` (`Object(False)`), `producer` (`Resource`) |
-| `KafkaConsumerContainer` | `kafka_settings` (`Dependency`), `topics` (`Dependency`), `consumer` (`Resource`) |
+| `KafkaProducerContainer` | `kafka_settings` (`Dependency`), `topics` (`Object(None)`), `auto_create_topics` (`Object(False)`), `producer` (`Resource`) |
+| `KafkaConsumerContainer` | `kafka_settings` (`Dependency`), `topics` (`Object(None)`), `consumer` (`Resource`) |
 
 Override the dependencies, `await container.init_resources()`, then
 `producer = await container.producer()`; `await container.shutdown_resources()` stops the
-client. See rule 11 — `topics` has no working default.
+client. See rule 11 — `kafka_settings` is the one override every container needs.
 
 ### OpenTelemetry — `contrib.telemetry`
 
@@ -351,10 +351,13 @@ Extra `**kwargs` go straight to the instrumentor.
     types or the build fails with `GraphMissingFactoryError`. `KafkaInfraProvider`
     provides both; without it, write the one-line factory yourself (see
     [Common mistakes](#common-mistakes)).
-11. **`Dependency(default=None)` is not a default.** dependency-injector treats `None` as
-    "unset", so `KafkaProducerContainer` and `KafkaConsumerContainer` raise
-    `Error: Dependency "…topics" is not defined` unless you call
-    `container.topics.override(...)` — pass `override(None)` when you want no topics.
+11. **`kafka_settings` is the only override a container requires.** It is a
+    `providers.Dependency` with no default, so leaving it out raises
+    `Error: Dependency "…kafka_settings" is not defined` the moment the resource is
+    resolved. `topics` and `auto_create_topics` are `providers.Object`, so they already
+    hold `None` and `False`; override them only when you have something to pass.
+    (`providers.Dependency(default=None)` would *not* be a default — dependency-injector
+    reads `None` as "unset" — which is why these are `Object`.)
 12. **`default_partitions` and `default_replication_factor` are validated and never
     used.** Nothing in the library reads them; the shape of a created topic comes from
     `TopicConfig` (where `num_partitions` and `replication_factor` are both required) or
@@ -473,7 +476,7 @@ The library defines no exception class of its own. What you will see:
 | `AttributeError` | a settings object that does not satisfy the protocol. |
 | `aiokafka.errors.KafkaError` and its subclasses | every broker interaction. `TopicAlreadyExistsError` is the one `ensure_topics_async` handles; `KafkaConnectionError`, `KafkaTimeoutError`, `NodeNotReadyError`, `UnknownTopicOrPartitionError`, `CommitFailedError` and the rest reach you unchanged. |
 | `dishka.exceptions.GraphMissingFactoryError` | a container missing one of the exact types in rule 10. |
-| `dependency_injector.errors.Error` | a container dependency never overridden — rule 11. |
+| `dependency_injector.errors.Error` | `kafka_settings` never overridden on a container — rule 11. |
 
 ## Documentation map
 

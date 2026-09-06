@@ -168,8 +168,8 @@ The container exposes:
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| `kafka_settings` | `Dependency` | Inject a `ProducerLifecycleSettingsProtocol` |
-| `topics` | `Dependency` | Optional `Sequence[TopicConfigProtocol]` |
+| `kafka_settings` | `Dependency` | Inject a `ProducerLifecycleSettingsProtocol` — no default, override it |
+| `topics` | `Object` | `Sequence[TopicConfigProtocol]`, defaults to `None` |
 | `auto_create_topics` | `Object` | `bool`, defaults to `False` |
 | `producer` | `Resource` | `AIOKafkaProducer` with full lifecycle |
 
@@ -191,9 +191,12 @@ container.topics.override(["orders", "payments"])
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| `kafka_settings` | `Dependency` | Inject a `ConsumerSettingsProtocol` |
-| `topics` | `Dependency` | Optional `Sequence[str]` of topic names |
+| `kafka_settings` | `Dependency` | Inject a `ConsumerSettingsProtocol` — no default, override it |
+| `topics` | `Object` | `Sequence[str]` of topic names, defaults to `None` |
 | `consumer` | `Resource` | `AIOKafkaConsumer` with full lifecycle |
+
+`kafka_settings` is the only override a container needs; `topics` and `auto_create_topics`
+carry working defaults.
 
 ---
 
