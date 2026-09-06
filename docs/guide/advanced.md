@@ -194,8 +194,8 @@ container.topics.override(["orders", "payments"])
 | `topics` | `Object` | `Sequence[str]` of topic names, defaults to `None` |
 | `consumer` | `Resource` | `AIOKafkaConsumer` with full lifecycle |
 
-`kafka_settings` is the only override a container needs; `topics` and `auto_create_topics`
-carry working defaults.
+In both containers `kafka_settings` is the only override that is required — `topics`, and
+`auto_create_topics` on the producer, already carry working defaults.
 
 ---
 

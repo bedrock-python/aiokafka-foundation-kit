@@ -184,10 +184,12 @@ KafkaSettingsProtocol             = SASL + SSL, the base every entry point accep
 ```
 
 Note that the password is a **method**, `get_sasl_password() -> str | None`, not an
-attribute. Protocol attributes are invariant, so a hand-rolled settings class has to use the
-`Literal` aliases themselves — `security_protocol: str` does not satisfy
-`security_protocol: KafkaSecurityProtocol`; import the aliases from
-`aiokafka_foundation_kit.config.kafka`. `TopicConfigProtocol` is `name`, `num_partitions`, `replication_factor`,
+attribute. Protocol attributes are invariant, so a hand-rolled settings class has to use
+the `Literal` aliases themselves: `security_protocol: str` does not satisfy
+`security_protocol: KafkaSecurityProtocol`, and the same goes for `acks`,
+`compression_type`, `sasl_mechanism` and `auto_offset_reset`.
+
+`TopicConfigProtocol` is `name`, `num_partitions`, `replication_factor`,
 `replica_assignment`, `topic_configs`, declared read-only so that a frozen dataclass — the
 kit's own `TopicConfig` among them — type-checks where the protocol is expected.
 
