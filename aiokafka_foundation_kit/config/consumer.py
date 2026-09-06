@@ -1,9 +1,11 @@
 """Kafka consumer configuration protocol."""
 
+from typing import Protocol
+
 from aiokafka_foundation_kit.config.kafka import KafkaOffsetReset, KafkaSettingsProtocol
 
 
-class ConsumerSettingsProtocol(KafkaSettingsProtocol):
+class ConsumerSettingsProtocol(KafkaSettingsProtocol, Protocol):
     """Protocol for Kafka consumer settings."""
 
     group_id: str

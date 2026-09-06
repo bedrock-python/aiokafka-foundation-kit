@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from aiokafka_foundation_kit import config
 from aiokafka_foundation_kit.config.producer import ProducerLifecycleSettingsProtocol
 
@@ -26,3 +28,27 @@ def test__config_all__every_name_is_bound_on_the_package():
 
     # Assert
     assert missing == []
+
+
+# ---------------------------------------------------------------------------
+# The protocols must be protocols
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "protocol",
+    [
+        config.KafkaConnectionSettingsProtocol,
+        config.KafkaSaslSettingsProtocol,
+        config.KafkaSslSettingsProtocol,
+        config.KafkaSettingsProtocol,
+        config.ProducerSettingsProtocol,
+        config.ProducerLifecycleSettingsProtocol,
+        config.ConsumerSettingsProtocol,
+        config.TopicConfigProtocol,
+    ],
+)
+def test__config_protocols__are_structural_protocols(protocol: type):
+    # Arrange / Act / Assert — a subclass that omits Protocol from its bases becomes an
+    # ordinary nominal class, and structural typing silently stops applying to it
+    assert protocol._is_protocol is True

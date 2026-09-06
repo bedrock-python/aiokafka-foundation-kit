@@ -1,9 +1,11 @@
 """Kafka producer configuration protocol."""
 
+from typing import Protocol
+
 from aiokafka_foundation_kit.config.kafka import KafkaAcks, KafkaCompressionType, KafkaSettingsProtocol
 
 
-class ProducerSettingsProtocol(KafkaSettingsProtocol):
+class ProducerSettingsProtocol(KafkaSettingsProtocol, Protocol):
     """Protocol for Kafka producer settings."""
 
     acks: KafkaAcks
@@ -14,7 +16,7 @@ class ProducerSettingsProtocol(KafkaSettingsProtocol):
     request_timeout_ms: int
 
 
-class ProducerLifecycleSettingsProtocol(ProducerSettingsProtocol):
+class ProducerLifecycleSettingsProtocol(ProducerSettingsProtocol, Protocol):
     """Producer settings that also carry topic auto-creation policy.
 
     Used by lifecycle/DI helpers that need to know whether to call

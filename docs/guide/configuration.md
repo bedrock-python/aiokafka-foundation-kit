@@ -202,34 +202,46 @@ If you prefer not to depend on Pydantic, implement the protocol directly:
 
 ```python
 from dataclasses import dataclass
+
 from aiokafka_foundation_kit import producer_lifecycle
+from aiokafka_foundation_kit.config.kafka import (
+    KafkaAcks,
+    KafkaCompressionType,
+    KafkaSaslMechanism,
+    KafkaSecurityProtocol,
+)
 
 @dataclass
 class MyProducerSettings:
     bootstrap_servers: str
     client_id: str | None = None
-    security_protocol: str = "PLAINTEXT"
+    security_protocol: KafkaSecurityProtocol = "PLAINTEXT"
     metadata_max_age_ms: int = 300_000
-    acks: str = "all"
-    compression_type: str | None = "gzip"
+    acks: KafkaAcks = "all"
+    compression_type: KafkaCompressionType | None = "gzip"
     enable_idempotence: bool = True
     max_batch_size: int = 16_384
     linger_ms: int = 5
     request_timeout_ms: int = 30_000
 
-    def get_sasl_password(self) -> str | None:
-        return None
-
-    # SASL fields (unused when security_protocol == "PLAINTEXT")
-    sasl_mechanism: str | None = None
+    # SASL and TLS fields (unused when security_protocol == "PLAINTEXT")
+    sasl_mechanism: KafkaSaslMechanism | None = None
     sasl_username: str | None = None
     ssl_cafile: str | None = None
     ssl_certfile: str | None = None
     ssl_keyfile: str | None = None
     ssl_check_hostname: bool = True
 
+    def get_sasl_password(self) -> str | None:
+        return None
+
 settings = MyProducerSettings(bootstrap_servers="localhost:9092")
 
 async with producer_lifecycle(settings) as producer:
     await producer.send_and_wait("topic", b"data")
 ```
+
+The plain `str` annotations a hand-written class usually starts with will not satisfy the
+protocol under a type checker: `security_protocol`, `acks`, `compression_type`,
+`sasl_mechanism` and `auto_offset_reset` are `Literal` aliases, and protocol attributes are
+invariant. Import the aliases from `aiokafka_foundation_kit.config.kafka` as above.
