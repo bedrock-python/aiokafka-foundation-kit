@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.1...aiokafka-foundation-kit-v0.1.2) (2026-09-06)
+
+
+### Bug Fixes
+
+* the defects the agents page turned up ([#20](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/20)) ([3bd7c8a](https://github.com/bedrock-python/aiokafka-foundation-kit/commit/3bd7c8a7a6f1e0e619072b071f4229c592a680b9))
+
 ## [0.1.1](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.0...aiokafka-foundation-kit-v0.1.1) (2026-09-05)
 
 
