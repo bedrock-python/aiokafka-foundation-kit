@@ -285,7 +285,9 @@ async with managed_kafka_client(producer, name="producer") as p:
     await p.send_and_wait("topic", b"data")
 ```
 
-Stop errors are caught, logged, and swallowed so the calling coroutine always gets a clean exit.
+`stop()` runs in a `finally`, so the client is stopped whether the body raises or not — and
+whether `on_started` raises or not. A `KafkaError` from `stop()` is caught and logged, which
+keeps it from masking the body's own exception; any other error from `stop()` propagates.
 
 ---
 

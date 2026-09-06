@@ -33,15 +33,18 @@ async def managed_kafka_client(
 ) -> AsyncIterator[_ClientT]:
     """Start ``client``, run ``on_started``, yield it, then stop it.
 
-    Stop errors are caught and logged so the caller's original exception (if
-    any) is preserved.
+    The client is stopped even when ``on_started`` raises, in which case the
+    hook's exception propagates and the body never runs.
+
+    ``KafkaError`` from ``stop()`` is caught and logged so the caller's original
+    exception (if any) is preserved; any other stop error propagates.
     """
     await client.start()
     logger.info("Kafka %s started", name)
-    if on_started is not None:
-        await on_started(client)
 
     try:
+        if on_started is not None:
+            await on_started(client)
         yield client
     finally:
         try:

@@ -60,9 +60,9 @@ Four nouns:
   that has not been started. Both go through `build_kafka_common_config(settings)`, which
   is the one place connection, SASL and TLS keys are assembled.
 * **Lifecycle** — `producer_lifecycle` / `consumer_lifecycle` are async context managers
-  around `managed_kafka_client`: start, optional `on_started` hook, yield, stop in a
-  `finally`, optional `on_stopped` hook. `producer_lifecycle` can also run
-  `ensure_topics_async` first.
+  around `managed_kafka_client`: start, then in a `try`/`finally` the optional `on_started`
+  hook, the yield, the stop and the optional `on_stopped` hook. `producer_lifecycle` can
+  also run `ensure_topics_async` first.
 * **Topics** — `TopicConfig` is a frozen dataclass describing one topic;
   `ensure_topics_async(topics, settings)` creates each one and treats an existing topic as
   success.
@@ -336,10 +336,9 @@ Extra `**kwargs` go straight to the instrumentor.
    aiokafka raises. On the consumer side `value_deserializer=loads_bytes` means
    `message.value` is a decoded object; a topic carrying Avro, protobuf or plain text needs
    `value_deserializer=lambda raw: raw` or the decode raises inside aiokafka's fetcher.
-8. **An `on_started` hook that raises leaks a started client.** The hook runs after
-   `start()` but before the `try`/`finally` that stops it, so the exception propagates with
-   the client still connected. Keep `on_started` total, or do the work inside the `async
-   with` body instead.
+8. **An `on_started` hook that raises aborts the context.** The hook runs inside the
+   `try`/`finally`, so the client is stopped and the hook's exception comes out of the
+   `async with` statement itself — the body never runs, and nothing is left connected.
 9. **Only `KafkaError` is swallowed on stop.** `managed_kafka_client` catches
    `KafkaError` from `stop()`, logs it, and skips `on_stopped`; anything else — `OSError`,
    `asyncio.CancelledError`, a `TimeoutError` — propagates out of the context manager and
