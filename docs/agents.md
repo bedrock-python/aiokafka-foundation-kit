@@ -198,13 +198,13 @@ keyword arguments are ignored rather than rejected, and `bootstrap_servers` (and
 | Field | Type | Default |
 |---|---|---|
 | `bootstrap_servers` | `str` | **required** |
-| `client_id` | `str \| None` | `None` |
+| `client_id` | `str | None` | `None` |
 | `metadata_max_age_ms` | `int` | `300000` |
-| `security_protocol` | `"PLAINTEXT" \| "SASL_PLAINTEXT" \| "SSL" \| "SASL_SSL"` | `"PLAINTEXT"` |
-| `sasl_mechanism` | `"PLAIN" \| "SCRAM-SHA-256" \| "SCRAM-SHA-512" \| None` | `None` |
-| `sasl_username` | `str \| None` | `None` |
-| `sasl_password` | `SecretStr \| None` | `None` |
-| `ssl_cafile` / `ssl_certfile` / `ssl_keyfile` | `str \| None` | `None` |
+| `security_protocol` | `"PLAINTEXT" | "SASL_PLAINTEXT" | "SSL" | "SASL_SSL"` | `"PLAINTEXT"` |
+| `sasl_mechanism` | `"PLAIN" | "SCRAM-SHA-256" | "SCRAM-SHA-512" | None` | `None` |
+| `sasl_username` | `str | None` | `None` |
+| `sasl_password` | `SecretStr | None` | `None` |
+| `ssl_cafile` / `ssl_certfile` / `ssl_keyfile` | `str | None` | `None` |
 | `ssl_check_hostname` | `bool` | `True` |
 
 Two validators run after construction: a `SASL_*` protocol requires `sasl_mechanism`,
@@ -215,22 +215,22 @@ Either failure is a `pydantic.ValidationError`.
 
 | Field | Type | Default |
 |---|---|---|
-| `acks` | `"0" \| "1" \| "all"` | `"all"` |
-| `compression_type` | `"gzip" \| "snappy" \| "lz4" \| "zstd" \| None` | `"gzip"` |
+| `acks` | `"0" | "1" | "all"` | `"all"` |
+| `compression_type` | `"gzip" | "snappy" | "lz4" | "zstd" | None` | `"gzip"` |
 | `enable_idempotence` | `bool` | `True` |
 | `max_batch_size` | `int` | `16384` |
 | `linger_ms` | `int` | `5` |
 | `request_timeout_ms` | `int` | `30000` |
 | `auto_create_topics` | `bool` | `False` |
 | `default_partitions` | `int` | `3` |
-| `default_replication_factor` | `int \| None` | `None`, required when `auto_create_topics=True` |
+| `default_replication_factor` | `int | None` | `None`, required when `auto_create_topics=True` |
 
 `BaseKafkaConsumerSettings` = `BaseKafkaSettings` +:
 
 | Field | Type | Default |
 |---|---|---|
 | `group_id` | `str` | **required** |
-| `auto_offset_reset` | `"earliest" \| "latest"` | `"earliest"` |
+| `auto_offset_reset` | `"earliest" | "latest"` | `"earliest"` |
 | `enable_auto_commit` | `bool` | `False` |
 | `session_timeout_ms` | `int` | `30000` |
 | `heartbeat_interval_ms` | `int` | `3000` |
@@ -258,8 +258,8 @@ The mixins are exported separately for composing your own model:
 
 | Provider | Provides | Needs in the container |
 |---|---|---|
-| `AsyncKafkaProducerProvider` | `AIOKafkaProducer` | `ProducerLifecycleSettingsProtocol` and `Sequence[TopicConfigProtocol] \| None` |
-| `AsyncKafkaConsumerProvider` | `AIOKafkaConsumer` | `ConsumerSettingsProtocol` and `tuple[str, ...] \| None` |
+| `AsyncKafkaProducerProvider` | `AIOKafkaProducer` | `ProducerLifecycleSettingsProtocol` and `Sequence[TopicConfigProtocol] | None` |
+| `AsyncKafkaConsumerProvider` | `AIOKafkaConsumer` | `ConsumerSettingsProtocol` and `tuple[str, ...] | None` |
 | `KafkaInfraProvider` | `Sequence[TopicConfig]` and `tuple[str, ...]` | `KafkaProducerInfraSettingsProtocol` and `KafkaConsumerInfraSettingsProtocol` |
 
 `AsyncKafkaProducerProvider` is the only place `settings.auto_create_topics` is read.
