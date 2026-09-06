@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from aiokafka import AIOKafkaConsumer
 
 from aiokafka_foundation_kit.consumer.client import create_async_kafka_consumer
 from aiokafka_foundation_kit.utils.json import loads_bytes
@@ -185,3 +186,35 @@ def test__create_async_kafka_consumer__settings__forwards_bootstrap_servers(cons
     # Assert
     _, kwargs = mock_cls.call_args
     assert kwargs["bootstrap_servers"] == "localhost:9092"
+
+
+# ---------------------------------------------------------------------------
+# TLS — aiokafka only accepts a prepared ssl_context
+# ---------------------------------------------------------------------------
+
+
+async def test__create_async_kafka_consumer__ssl_settings__constructs_real_consumer(consumer_settings):
+    # Arrange — no cafile, so the system trust store is used and no file is read
+    consumer_settings.security_protocol = "SSL"
+    consumer_settings.ssl_cafile = None
+
+    # Act
+    result = create_async_kafka_consumer(consumer_settings, ["events"])
+
+    # Assert
+    assert isinstance(result, AIOKafkaConsumer)
+
+
+async def test__create_async_kafka_consumer__sasl_ssl_settings__constructs_real_consumer(consumer_settings):
+    # Arrange
+    consumer_settings.security_protocol = "SASL_SSL"
+    consumer_settings.sasl_mechanism = "PLAIN"
+    consumer_settings.sasl_username = "user"
+    consumer_settings.get_sasl_password.return_value = "pw"
+    consumer_settings.ssl_cafile = None
+
+    # Act
+    result = create_async_kafka_consumer(consumer_settings, ["events"])
+
+    # Assert
+    assert isinstance(result, AIOKafkaConsumer)

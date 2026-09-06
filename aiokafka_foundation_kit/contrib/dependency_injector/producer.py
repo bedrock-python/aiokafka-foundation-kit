@@ -36,12 +36,13 @@ class KafkaProducerContainer(containers.DeclarativeContainer):
 
     Configuration:
         - ``kafka_settings``: Kafka producer settings (``ProducerSettingsProtocol``).
-        - ``topics``: Optional list of topics to auto-create (``Sequence[TopicConfigProtocol]``).
+        - ``topics``: List of topics to auto-create (``Sequence[TopicConfigProtocol]``),
+          ``None`` unless overridden.
         - ``auto_create_topics``: Whether to run ``ensure_topics_async`` on startup.
     """
 
     kafka_settings = providers.Dependency()  # type: ignore[var-annotated]
-    topics = providers.Dependency(default=None)  # type: ignore[var-annotated]
+    topics = providers.Object(None)  # type: ignore[var-annotated]
     auto_create_topics = providers.Object(False)  # type: ignore[var-annotated]
 
     producer = providers.Resource(  # type: ignore[var-annotated]

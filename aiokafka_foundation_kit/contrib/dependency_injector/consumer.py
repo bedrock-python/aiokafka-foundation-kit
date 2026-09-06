@@ -30,11 +30,11 @@ class KafkaConsumerContainer(containers.DeclarativeContainer):
 
     Configuration:
         - ``kafka_settings``: Kafka consumer settings (``ConsumerSettingsProtocol``).
-        - ``topics``: Optional tuple of topic names to subscribe to.
+        - ``topics``: Tuple of topic names to subscribe to, ``None`` unless overridden.
     """
 
     kafka_settings = providers.Dependency()  # type: ignore[var-annotated]
-    topics = providers.Dependency(default=None)  # type: ignore[var-annotated]
+    topics = providers.Object(None)  # type: ignore[var-annotated]
 
     consumer = providers.Resource(  # type: ignore[var-annotated]
         _consumer_resource,

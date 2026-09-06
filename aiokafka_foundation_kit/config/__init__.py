@@ -14,7 +14,7 @@ from .kafka import (
     KafkaSettingsProtocol,
     KafkaSslSettingsProtocol,
 )
-from .producer import ProducerSettingsProtocol
+from .producer import ProducerLifecycleSettingsProtocol, ProducerSettingsProtocol
 from .topic import TopicConfigProtocol
 
 __all__ = [
@@ -23,6 +23,7 @@ __all__ = [
     "KafkaSaslSettingsProtocol",
     "KafkaSettingsProtocol",
     "KafkaSslSettingsProtocol",
+    "ProducerLifecycleSettingsProtocol",
     "ProducerSettingsProtocol",
     "TopicConfigProtocol",
 ]

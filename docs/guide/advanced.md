@@ -15,16 +15,28 @@ Manages the `AIOKafkaProducer` at `APP` scope (started once, stopped on shutdown
 Automatically creates topics when `settings.auto_create_topics` is `True`.
 
 ```python
-from dishka import make_async_container
+from collections.abc import Sequence
+
+from dishka import Provider, Scope, make_async_container, provide
+
+from aiokafka_foundation_kit.config import ProducerLifecycleSettingsProtocol, TopicConfigProtocol
 from aiokafka_foundation_kit.contrib.di import AsyncKafkaProducerProvider
 from aiokafka_foundation_kit.contrib.models import BaseKafkaProducerSettings
 
-settings = BaseKafkaProducerSettings(bootstrap_servers="localhost:9092")
 
-container = make_async_container(
-    AsyncKafkaProducerProvider(),
-    # Provide the settings object to the container
-)
+class AppProvider(Provider):
+    scope = Scope.APP
+
+    @provide
+    def kafka_settings(self) -> ProducerLifecycleSettingsProtocol:
+        return BaseKafkaProducerSettings(bootstrap_servers="localhost:9092")
+
+    @provide
+    def topics(self) -> Sequence[TopicConfigProtocol] | None:
+        return None
+
+
+container = make_async_container(AppProvider(), AsyncKafkaProducerProvider())
 ```
 
 The provider's `get_kafka_producer` method signature:
@@ -37,6 +49,10 @@ async def get_kafka_producer(
     topics: Sequence[TopicConfigProtocol] | None = None,
 ) -> AsyncIterator[AIOKafkaProducer]: ...
 ```
+
+Dishka resolves by exact type and ignores the Python `= None` default, so the container must
+hold a factory for `Sequence[TopicConfigProtocol] | None` — provide it yourself as above, or
+add `KafkaInfraProvider`, which supplies it from the topic catalog.
 
 Inject `AIOKafkaProducer` wherever you need to send messages:
 
@@ -72,6 +88,9 @@ async def get_kafka_consumer(
 ) -> AsyncIterator[AIOKafkaConsumer]: ...
 ```
 
+Same rule as the producer: the container needs a factory for `tuple[str, ...] | None`, either
+your own or `KafkaInfraProvider`.
+
 ### KafkaInfraProvider
 
 Resolves physical topic names (with optional prefix) from a logical catalog. Typically used
@@ -98,6 +117,20 @@ infra_settings = BaseKafkaInfraSettings(
 
 - `Sequence[TopicConfig]` — physical topic configs with prefix applied, e.g. `prod.orders`.
 - `tuple[str, ...]` — resolved consumer subscription topics, e.g. `("prod.orders",)`.
+- the same two values under `Sequence[TopicConfigProtocol] | None` and `tuple[str, ...] | None`,
+  which are the exact types `AsyncKafkaProducerProvider` and `AsyncKafkaConsumerProvider` ask
+  the container for.
+
+So the three providers compose directly:
+
+```python
+container = make_async_container(
+    AppProvider(),                 # settings, including the infra settings
+    KafkaInfraProvider(),
+    AsyncKafkaProducerProvider(),
+    AsyncKafkaConsumerProvider(),
+)
+```
 
 ---
 
@@ -134,8 +167,8 @@ The container exposes:
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| `kafka_settings` | `Dependency` | Inject a `ProducerLifecycleSettingsProtocol` |
-| `topics` | `Dependency` | Optional `Sequence[TopicConfigProtocol]` |
+| `kafka_settings` | `Dependency` | Inject a `ProducerLifecycleSettingsProtocol` — no default, override it |
+| `topics` | `Object` | `Sequence[TopicConfigProtocol]`, defaults to `None` |
 | `auto_create_topics` | `Object` | `bool`, defaults to `False` |
 | `producer` | `Resource` | `AIOKafkaProducer` with full lifecycle |
 
@@ -157,9 +190,12 @@ container.topics.override(["orders", "payments"])
 
 | Attribute | Type | Description |
 | --- | --- | --- |
-| `kafka_settings` | `Dependency` | Inject a `ConsumerSettingsProtocol` |
-| `topics` | `Dependency` | Optional `Sequence[str]` of topic names |
+| `kafka_settings` | `Dependency` | Inject a `ConsumerSettingsProtocol` — no default, override it |
+| `topics` | `Object` | `Sequence[str]` of topic names, defaults to `None` |
 | `consumer` | `Resource` | `AIOKafkaConsumer` with full lifecycle |
+
+In both containers `kafka_settings` is the only override that is required — `topics`, and
+`auto_create_topics` on the producer, already carry working defaults.
 
 ---
 
@@ -248,7 +284,9 @@ async with managed_kafka_client(producer, name="producer") as p:
     await p.send_and_wait("topic", b"data")
 ```
 
-Stop errors are caught, logged, and swallowed so the calling coroutine always gets a clean exit.
+`stop()` runs in a `finally`, so the client is stopped whether the body raises or not — and
+whether `on_started` raises or not. A `KafkaError` from `stop()` is caught and logged, which
+keeps it from masking the body's own exception; any other error from `stop()` propagates.
 
 ---
 
@@ -270,3 +308,6 @@ common = build_kafka_common_config(settings)
 
 producer = AIOKafkaProducer(**common, max_request_size=10_485_760)
 ```
+
+For `SSL` and `SASL_SSL` the dict carries a ready `ssl_context` built from the settings'
+`ssl_*` fields — see [How the TLS fields reach aiokafka](configuration.md#how-the-tls-fields-reach-aiokafka).

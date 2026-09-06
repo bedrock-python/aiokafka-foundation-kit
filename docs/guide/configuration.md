@@ -86,9 +86,17 @@ Extends `BaseKafkaSettings` + `KafkaAutoCreateMixin`.
 | `max_batch_size` | `int` | `16384` | Maximum batch size in bytes (16 KiB) |
 | `linger_ms` | `int` | `5` | Time to wait before sending a partial batch (ms) |
 | `request_timeout_ms` | `int` | `30000` | Request timeout (ms) |
-| `auto_create_topics` | `bool` | `False` | Create declared topics on startup |
-| `default_partitions` | `int` | `3` | Partition count for auto-created topics |
-| `default_replication_factor` | `int \| None` | `None` | Replication factor for auto-created topics (**required** when `auto_create_topics=True`) |
+| `auto_create_topics` | `bool` | `False` | Read by `AsyncKafkaProducerProvider` to decide whether to create topics on startup |
+| `default_partitions` | `int` | `3` | Your own default; not read by the library |
+| `default_replication_factor` | `int \| None` | `None` | Your own default; not read by the library (**required** when `auto_create_topics=True`) |
+
+!!! warning "`default_partitions` and `default_replication_factor` are not applied"
+    Nothing in the library reads these two fields. The shape of a created topic comes from
+    the `TopicConfig` objects you pass to `producer_lifecycle` / `ensure_topics_async`, or
+    from the `KafkaTopicSettings` entries in a `topic_catalog` — both carry their own
+    `num_partitions` and `replication_factor`. The fields remain as a place to keep a
+    service-wide default of your own, and a validator still requires
+    `default_replication_factor` when `auto_create_topics=True`.
 
 ### BaseKafkaInfraSettings
 
@@ -148,6 +156,22 @@ settings = BaseKafkaProducerSettings(
 )
 ```
 
+### How the TLS fields reach aiokafka
+
+aiokafka takes a prepared `ssl.SSLContext`, not certificate paths. For `SSL` and `SASL_SSL`,
+`build_kafka_common_config` loads the three `ssl_*` paths through
+[`aiokafka.helpers.create_ssl_context`](https://aiokafka.readthedocs.io/en/stable/api.html#helpers)
+and passes the result as `ssl_context`; the individual paths never reach the client.
+
+Two consequences worth knowing:
+
+- The certificate files are read when the client is built, so a missing or unreadable file
+  raises `FileNotFoundError` (a malformed one `ssl.SSLError`) from
+  `create_async_kafka_producer` / `create_async_kafka_consumer` / `ensure_topics_async`,
+  not on the first connection attempt. With no `ssl_cafile`, the system trust store is used.
+- `ssl_check_hostname=False` sets `check_hostname = False` on the context. The broker
+  certificate is still verified against the CA — only the hostname match is skipped.
+
 ---
 
 ## Loading settings from environment
@@ -178,34 +202,46 @@ If you prefer not to depend on Pydantic, implement the protocol directly:
 
 ```python
 from dataclasses import dataclass
+
 from aiokafka_foundation_kit import producer_lifecycle
+from aiokafka_foundation_kit.config.kafka import (
+    KafkaAcks,
+    KafkaCompressionType,
+    KafkaSaslMechanism,
+    KafkaSecurityProtocol,
+)
 
 @dataclass
 class MyProducerSettings:
     bootstrap_servers: str
     client_id: str | None = None
-    security_protocol: str = "PLAINTEXT"
+    security_protocol: KafkaSecurityProtocol = "PLAINTEXT"
     metadata_max_age_ms: int = 300_000
-    acks: str = "all"
-    compression_type: str | None = "gzip"
+    acks: KafkaAcks = "all"
+    compression_type: KafkaCompressionType | None = "gzip"
     enable_idempotence: bool = True
     max_batch_size: int = 16_384
     linger_ms: int = 5
     request_timeout_ms: int = 30_000
 
-    def get_sasl_password(self) -> str | None:
-        return None
-
-    # SASL fields (unused when security_protocol == "PLAINTEXT")
-    sasl_mechanism: str | None = None
+    # SASL and TLS fields (unused when security_protocol == "PLAINTEXT")
+    sasl_mechanism: KafkaSaslMechanism | None = None
     sasl_username: str | None = None
     ssl_cafile: str | None = None
     ssl_certfile: str | None = None
     ssl_keyfile: str | None = None
     ssl_check_hostname: bool = True
 
+    def get_sasl_password(self) -> str | None:
+        return None
+
 settings = MyProducerSettings(bootstrap_servers="localhost:9092")
 
 async with producer_lifecycle(settings) as producer:
     await producer.send_and_wait("topic", b"data")
 ```
+
+The plain `str` annotations a hand-written class usually starts with will not satisfy the
+protocol under a type checker: `security_protocol`, `acks`, `compression_type`,
+`sasl_mechanism` and `auto_offset_reset` are `Literal` aliases, and protocol attributes are
+invariant. Import the aliases from `aiokafka_foundation_kit.config.kafka` as above.

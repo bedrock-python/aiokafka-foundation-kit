@@ -7,7 +7,7 @@
 [![codecov](https://codecov.io/gh/bedrock-python/aiokafka-foundation-kit/graph/badge.svg)](https://codecov.io/gh/bedrock-python/aiokafka-foundation-kit)
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://bedrock-python.github.io/aiokafka-foundation-kit/)
 
-Async Kafka foundation library with producer, consumer, metrics, and Dishka providers built on [aiokafka](https://github.com/aio-libs/aiokafka).
+Async Kafka foundation library — settings, client factories, lifecycle helpers, topic management and DI wiring on top of [aiokafka](https://github.com/aio-libs/aiokafka).
 
 > [!TIP]
 > **Building this with an AI assistant?** Hand it
@@ -21,14 +21,16 @@ Async Kafka foundation library with producer, consumer, metrics, and Dishka prov
 
 ## Features
 
-- 🚀 **AsyncIO-first**: Built on top of `aiokafka` for high-performance async operations
-- 📊 **Observability**: Built-in Prometheus metrics and OpenTelemetry support
-- 🔧 **Pydantic Settings**: Type-safe configuration with Pydantic
-- 💉 **Dishka Integration**: Dependency injection providers for easy integration
-- 🔄 **Retry Logic**: Configurable retry policies with `tenacity`
-- 🏥 **Health Checks**: Kafka cluster health monitoring
-- 📝 **Topic Management**: Automatic topic creation and management
-- 🎯 **Type-Safe**: Full type annotations with mypy strict mode
+- **AsyncIO-first** — everything is built on `aiokafka`; there is no synchronous mirror
+- **Protocol-based config** — every entry point takes a `typing.Protocol`, so a Pydantic model, a dataclass or a stub all work
+- **Pydantic settings** — `BaseKafkaProducerSettings` / `BaseKafkaConsumerSettings` with validation, via the `models` extra
+- **Lifecycle helpers** — `producer_lifecycle` / `consumer_lifecycle` own start and stop, including on failure
+- **Topic management** — `ensure_topics_async` creates topics idempotently before a producer starts
+- **Health checks** — `check_kafka_health_async` probes broker reachability
+- **JSON serialisation** — `dumps_bytes` / `loads_bytes`, with transparent `orjson` acceleration
+- **DI integration** — Dishka providers and dependency-injector containers
+- **OpenTelemetry** — `instrument_aiokafka` wires the aiokafka instrumentor in one call
+- **Type-safe** — full annotations, checked with mypy
 
 ## Installation
 
@@ -45,63 +47,43 @@ pip install aiokafka-foundation-kit[models,orjson,dishka,dependency-injector,tel
 
 ## Quick Start
 
-### Producer Example
+### Producer
 
 ```python
-from aiokafka_foundation_kit import (
-    BaseKafkaProducerSettings,
-    AsyncKafkaPublisher,
-    create_async_kafka_producer,
-)
+from aiokafka_foundation_kit import TopicConfig, producer_lifecycle
+from aiokafka_foundation_kit.contrib.models import BaseKafkaProducerSettings
 
-# Configure
-settings = BaseKafkaProducerSettings(
-    bootstrap_servers="localhost:9092",
-)
+settings = BaseKafkaProducerSettings(bootstrap_servers="localhost:9092")
+topics = [TopicConfig(name="events", num_partitions=3, replication_factor=1)]
 
-# Create producer
-producer = create_async_kafka_producer(settings)
-await producer.start()
-
-# Create publisher
-publisher = AsyncKafkaPublisher(producer)
-await publisher.start()
-
-# Publish
-await publisher.publish(
-    topic="events",
-    value={"event": "user_created", "user_id": "123"},
-    event_type="user_created",
-)
+async with producer_lifecycle(settings, topics=topics, auto_create_topics=True) as producer:
+    # dicts are serialised to JSON; keys must already be bytes
+    await producer.send_and_wait("events", {"event": "user_created", "user_id": "123"})
 ```
 
-### Consumer Example
+`producer_lifecycle` yields aiokafka's own `AIOKafkaProducer`, started, and stops it when the
+block exits — including when the block raises.
+
+### Consumer
 
 ```python
-from aiokafka_foundation_kit import (
-    BaseKafkaConsumerSettings,
-    AsyncKafkaConsumerRunner,
-    create_async_kafka_consumer,
-)
+from aiokafka_foundation_kit import consumer_lifecycle
+from aiokafka_foundation_kit.contrib.models import BaseKafkaConsumerSettings
 
-# Configure
 settings = BaseKafkaConsumerSettings(
     bootstrap_servers="localhost:9092",
     group_id="my-group",
 )
 
-# Create consumer
-consumer = create_async_kafka_consumer(settings, topics=["events"])
-client = AsyncKafkaConsumerClient(consumer)
-await client.start()
-
-# Handle messages
-async def handle(message):
-    print(f"Received: {message.value}")
-
-runner = AsyncKafkaConsumerRunner(client, handle)
-await runner.start()
+async with consumer_lifecycle(settings, topics=("events",)) as consumer:
+    async for message in consumer:
+        print(message.value)   # already decoded from JSON
+        await consumer.commit()
 ```
+
+`enable_auto_commit` defaults to `False`, so commit after processing to get at-least-once
+delivery. The `async for` loop is yours to write: this library manages the client, not the
+message flow.
 
 ## Documentation
 
@@ -113,16 +95,14 @@ Full documentation at [bedrock-python.github.io/aiokafka-foundation-kit](https:/
 
 ```bash
 # Install dependencies
-uv sync --group dev
+uv sync --group dev --all-extras
+
+# Lint, format check and mypy
+make check
 
 # Run tests
+make test-unit
 make test
-
-# Run linter
-make lint
-
-# Format code
-make fmt
 ```
 
 ## License

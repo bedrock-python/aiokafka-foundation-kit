@@ -60,9 +60,9 @@ Four nouns:
   that has not been started. Both go through `build_kafka_common_config(settings)`, which
   is the one place connection, SASL and TLS keys are assembled.
 * **Lifecycle** — `producer_lifecycle` / `consumer_lifecycle` are async context managers
-  around `managed_kafka_client`: start, optional `on_started` hook, yield, stop in a
-  `finally`, optional `on_stopped` hook. `producer_lifecycle` can also run
-  `ensure_topics_async` first.
+  around `managed_kafka_client`: start, then in a `try`/`finally` the optional `on_started`
+  hook, the yield, the stop and the optional `on_stopped` hook. `producer_lifecycle` can
+  also run `ensure_topics_async` first.
 * **Topics** — `TopicConfig` is a frozen dataclass describing one topic;
   `ensure_topics_async(topics, settings)` creates each one and treats an existing topic as
   success.
@@ -152,7 +152,7 @@ one process runs several clients.
 |---|---|
 | `dumps_bytes`, `loads_bytes`, `managed_kafka_client` | `aiokafka_foundation_kit.utils` |
 | `KafkaConnectionSettingsProtocol`, `KafkaSaslSettingsProtocol`, `KafkaSslSettingsProtocol` | `aiokafka_foundation_kit.config` |
-| `ProducerLifecycleSettingsProtocol` | `aiokafka_foundation_kit.config.producer` — it is *not* re-exported by `.config` |
+| `ProducerLifecycleSettingsProtocol` | `aiokafka_foundation_kit.config` (or `.config.producer`) |
 | `KafkaSecurityProtocol`, `KafkaSaslMechanism`, `KafkaAcks`, `KafkaCompressionType`, `KafkaOffsetReset` | `aiokafka_foundation_kit.config.kafka`, or `aiokafka_foundation_kit.contrib.models` |
 | every contrib name | its own submodule — `contrib/__init__.py` exports nothing |
 
@@ -184,8 +184,14 @@ KafkaSettingsProtocol             = SASL + SSL, the base every entry point accep
 ```
 
 Note that the password is a **method**, `get_sasl_password() -> str | None`, not an
-attribute. `TopicConfigProtocol` is `name`, `num_partitions`, `replication_factor`,
-`replica_assignment`, `topic_configs`.
+attribute. Protocol attributes are invariant, so a hand-rolled settings class has to use
+the `Literal` aliases themselves: `security_protocol: str` does not satisfy
+`security_protocol: KafkaSecurityProtocol`, and the same goes for `acks`,
+`compression_type`, `sasl_mechanism` and `auto_offset_reset`.
+
+`TopicConfigProtocol` is `name`, `num_partitions`, `replication_factor`,
+`replica_assignment`, `topic_configs`, declared read-only so that a frozen dataclass — the
+kit's own `TopicConfig` among them — type-checks where the protocol is expected.
 
 ### Pydantic settings — `contrib.models`
 
@@ -260,7 +266,7 @@ The mixins are exported separately for composing your own model:
 |---|---|---|
 | `AsyncKafkaProducerProvider` | `AIOKafkaProducer` | `ProducerLifecycleSettingsProtocol` and `Sequence[TopicConfigProtocol] | None` |
 | `AsyncKafkaConsumerProvider` | `AIOKafkaConsumer` | `ConsumerSettingsProtocol` and `tuple[str, ...] | None` |
-| `KafkaInfraProvider` | `Sequence[TopicConfig]` and `tuple[str, ...]` | `KafkaProducerInfraSettingsProtocol` and `KafkaConsumerInfraSettingsProtocol` |
+| `KafkaInfraProvider` | `Sequence[TopicConfig]`, `tuple[str, ...]`, and both of those under the optional types the two providers above ask for | `KafkaProducerInfraSettingsProtocol` and `KafkaConsumerInfraSettingsProtocol` |
 
 `AsyncKafkaProducerProvider` is the only place `settings.auto_create_topics` is read.
 `KafkaInfraProvider` turns `topic_catalog` into `TopicConfig` objects and
@@ -269,7 +275,8 @@ The infrastructure protocols — `KafkaInfraBaseSettingsProtocol`,
 `KafkaProducerInfraSettingsProtocol`, `KafkaConsumerInfraSettingsProtocol`,
 `KafkaTopicSettingsProtocol` — are exported for the settings side.
 
-The two sets of types do not line up on their own; see rule 10.
+Adding `KafkaInfraProvider` to a container is therefore enough to satisfy the topics
+argument of both client providers; see rule 10 for a container without it.
 
 ### dependency-injector — `contrib.dependency_injector`
 
@@ -277,12 +284,12 @@ The two sets of types do not line up on their own; see rule 10.
 
 | Container | Providers |
 |---|---|
-| `KafkaProducerContainer` | `kafka_settings` (`Dependency`), `topics` (`Dependency`), `auto_create_topics` (`Object(False)`), `producer` (`Resource`) |
-| `KafkaConsumerContainer` | `kafka_settings` (`Dependency`), `topics` (`Dependency`), `consumer` (`Resource`) |
+| `KafkaProducerContainer` | `kafka_settings` (`Dependency`), `topics` (`Object(None)`), `auto_create_topics` (`Object(False)`), `producer` (`Resource`) |
+| `KafkaConsumerContainer` | `kafka_settings` (`Dependency`), `topics` (`Object(None)`), `consumer` (`Resource`) |
 
 Override the dependencies, `await container.init_resources()`, then
 `producer = await container.producer()`; `await container.shutdown_resources()` stops the
-client. See rule 11 — `topics` has no working default.
+client. See rule 11 — `kafka_settings` is the one override every container needs.
 
 ### OpenTelemetry — `contrib.telemetry`
 
@@ -301,15 +308,16 @@ Extra `**kwargs` go straight to the instrumentor.
    aiokafka's constructor takes the running loop. Called at import time or from
    synchronous module scope it raises
    `RuntimeError: The object should be created within an async function or provide loop directly.`
-2. **TLS does not currently work through these helpers.**
-   `build_kafka_common_config` emits `ssl_cafile`, `ssl_certfile`, `ssl_keyfile` and
-   `ssl_check_hostname` for `SSL` and `SASL_SSL`, and aiokafka accepts none of them — it takes a
-   prepared `ssl_context`. Any `SSL` or `SASL_SSL` settings object therefore
-   raises `TypeError: … got an unexpected keyword argument 'ssl_check_hostname'` from the
-   producer, the consumer and `ensure_topics_async` alike. Build the client yourself until
-   that is fixed: take the dict, drop the four `ssl_*` keys, and pass
-   `ssl_context=aiokafka.helpers.create_ssl_context(cafile=…, certfile=…, keyfile=…)`.
-   `SASL_PLAINTEXT` and `PLAINTEXT` are unaffected.
+2. **TLS reaches aiokafka as one `ssl_context` key.** aiokafka takes a prepared
+   `ssl.SSLContext` and nothing else, so for `SSL` and `SASL_SSL`
+   `build_kafka_common_config` loads `ssl_cafile`, `ssl_certfile` and `ssl_keyfile` through
+   `aiokafka.helpers.create_ssl_context` and returns `ssl_context`; the four `ssl_*` keys
+   never appear in the dict. The files are read at that moment, so a missing or unreadable
+   one raises `FileNotFoundError` (a malformed one `ssl.SSLError`) from the factory rather
+   than at connect time, and with no `ssl_cafile` the system trust store is used.
+   `ssl_check_hostname=False` sets `check_hostname = False` on the context — the
+   certificate is still verified against the CA, only the hostname is not.
+   `SASL_PLAINTEXT` and `PLAINTEXT` build no context at all.
 3. **`producer_lifecycle` does not read `settings.auto_create_topics`.** It has its own
    keyword, defaulting to `False`, and creates topics only when `auto_create_topics=True`
    *and* `topics` is non-empty. Passing one without the other silently creates nothing.
@@ -333,25 +341,27 @@ Extra `**kwargs` go straight to the instrumentor.
    aiokafka raises. On the consumer side `value_deserializer=loads_bytes` means
    `message.value` is a decoded object; a topic carrying Avro, protobuf or plain text needs
    `value_deserializer=lambda raw: raw` or the decode raises inside aiokafka's fetcher.
-8. **An `on_started` hook that raises leaks a started client.** The hook runs after
-   `start()` but before the `try`/`finally` that stops it, so the exception propagates with
-   the client still connected. Keep `on_started` total, or do the work inside the `async
-   with` body instead.
+8. **An `on_started` hook that raises aborts the context.** The hook runs inside the
+   `try`/`finally`, so the client is stopped and the hook's exception comes out of the
+   `async with` statement itself — the body never runs, and nothing is left connected.
 9. **Only `KafkaError` is swallowed on stop.** `managed_kafka_client` catches
    `KafkaError` from `stop()`, logs it, and skips `on_stopped`; anything else — `OSError`,
    `asyncio.CancelledError`, a `TimeoutError` — propagates out of the context manager and
    can mask the body's own exception.
 10. **dishka resolves by exact type, and the kit's providers ask for optionals.**
-    `AsyncKafkaProducerProvider` wants `Sequence[TopicConfigProtocol] | None`, while
-    `KafkaInfraProvider` supplies `Sequence[TopicConfig]`; the consumer wants
-    `tuple[str, ...] | None` against a supplied `tuple[str, ...]`. Python's `= None`
-    default is not a dishka default, so a container holding both providers fails to build
-    with `GraphMissingFactoryError`. Add a one-method bridge provider (see
+    `AsyncKafkaProducerProvider` wants `Sequence[TopicConfigProtocol] | None` and
+    `AsyncKafkaConsumerProvider` wants `tuple[str, ...] | None`. Python's `= None` default
+    is not a dishka default, so something in the container has to provide those exact
+    types or the build fails with `GraphMissingFactoryError`. `KafkaInfraProvider`
+    provides both; without it, write the one-line factory yourself (see
     [Common mistakes](#common-mistakes)).
-11. **`Dependency(default=None)` is not a default.** dependency-injector treats `None` as
-    "unset", so `KafkaProducerContainer` and `KafkaConsumerContainer` raise
-    `Error: Dependency "…topics" is not defined` unless you call
-    `container.topics.override(...)` — pass `override(None)` when you want no topics.
+11. **`kafka_settings` is the only override a container requires.** It is a
+    `providers.Dependency` with no default, so leaving it out raises
+    `Error: Dependency "…kafka_settings" is not defined` the moment the resource is
+    resolved. `topics` and `auto_create_topics` are `providers.Object`, so they already
+    hold `None` and `False`; override them only when you have something to pass.
+    (`providers.Dependency(default=None)` would *not* be a default — dependency-injector
+    reads `None` as "unset" — which is why these are `Object`.)
 12. **`default_partitions` and `default_replication_factor` are validated and never
     used.** Nothing in the library reads them; the shape of a created topic comes from
     `TopicConfig` (where `num_partitions` and `replication_factor` are both required) or
@@ -436,24 +446,24 @@ await producer.send_and_wait("orders", {"id": 42}, key=b"order-42")
 ```
 
 ```python
-# WRONG — the two providers do not compose; the container refuses to build
+# WRONG — nothing provides Sequence[TopicConfigProtocol] | None, and the `= None`
+# on the provider's parameter is not a dishka default; the container refuses to build
+container = make_async_container(SettingsProvider(), AsyncKafkaProducerProvider())
+
+# RIGHT — KafkaInfraProvider provides that exact type from the topic catalog
 container = make_async_container(SettingsProvider(), KafkaInfraProvider(),
                                  AsyncKafkaProducerProvider())
 
-# RIGHT — bridge the exact type keys the kit's providers ask for
-class KafkaBridgeProvider(Provider):
+# ALSO RIGHT — no catalog, so provide the type yourself
+class TopicsProvider(Provider):
     scope = Scope.APP
 
     @provide
-    def producer_topics(self, configs: Sequence[TopicConfig]) -> Sequence[TopicConfigProtocol] | None:
-        return configs
+    def producer_topics(self) -> Sequence[TopicConfigProtocol] | None:
+        return None
 
-    @provide
-    def consumer_topics(self, names: tuple[str, ...]) -> tuple[str, ...] | None:
-        return names
-
-container = make_async_container(SettingsProvider(), KafkaInfraProvider(),
-                                 KafkaBridgeProvider(), AsyncKafkaProducerProvider())
+container = make_async_container(SettingsProvider(), TopicsProvider(),
+                                 AsyncKafkaProducerProvider())
 ```
 
 ## Errors
@@ -465,12 +475,12 @@ The library defines no exception class of its own. What you will see:
 | `ImportError` | instantiating a contrib provider or container, or calling `instrument_aiokafka`, without the extra. The message names the extra to install. |
 | `pydantic.ValidationError` | a `contrib.models` settings object: a missing `bootstrap_servers` or `group_id`, a value outside a `Literal`, an incomplete `SASL_*` or `SSL` block, `auto_create_topics=True` with no `default_replication_factor`. |
 | `RuntimeError` | a client built outside a running loop, or a compression codec whose library is missing. |
-| `TypeError` | `SSL` / `SASL_SSL` settings reaching aiokafka — see rule 2. |
+| `FileNotFoundError`, `ssl.SSLError` | a TLS certificate or key path that cannot be read or parsed, raised while the settings are translated — see rule 2. |
 | `ValueError` | `acks` of `"0"` or `"1"` while `enable_idempotence` is on. |
 | `AttributeError` | a settings object that does not satisfy the protocol. |
 | `aiokafka.errors.KafkaError` and its subclasses | every broker interaction. `TopicAlreadyExistsError` is the one `ensure_topics_async` handles; `KafkaConnectionError`, `KafkaTimeoutError`, `NodeNotReadyError`, `UnknownTopicOrPartitionError`, `CommitFailedError` and the rest reach you unchanged. |
 | `dishka.exceptions.GraphMissingFactoryError` | a container missing one of the exact types in rule 10. |
-| `dependency_injector.errors.Error` | a container dependency never overridden — rule 11. |
+| `dependency_injector.errors.Error` | `kafka_settings` never overridden on a container — rule 11. |
 
 ## Documentation map
 

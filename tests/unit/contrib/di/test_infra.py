@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from unittest.mock import MagicMock
 
 import pytest
+from dishka import Provider, Scope, make_async_container, provide
 
 import aiokafka_foundation_kit.contrib.di._deps as deps_mod
+from aiokafka_foundation_kit.config.consumer import ConsumerSettingsProtocol
+from aiokafka_foundation_kit.config.producer import ProducerLifecycleSettingsProtocol
+from aiokafka_foundation_kit.config.topic import TopicConfigProtocol
+from aiokafka_foundation_kit.contrib.di.consumer import AsyncKafkaConsumerProvider
 from aiokafka_foundation_kit.contrib.di.infra import (
+    KafkaConsumerInfraSettingsProtocol,
     KafkaInfraProvider,
+    KafkaProducerInfraSettingsProtocol,
     _apply_topic_prefix,
 )
-from aiokafka_foundation_kit.contrib.models.infra import KafkaTopicSettings
+from aiokafka_foundation_kit.contrib.di.producer import AsyncKafkaProducerProvider
+from aiokafka_foundation_kit.contrib.models.consumer import BaseKafkaConsumerSettings
+from aiokafka_foundation_kit.contrib.models.infra import BaseKafkaInfraSettings, KafkaTopicSettings
+from aiokafka_foundation_kit.contrib.models.producer import BaseKafkaProducerSettings
 
 # ---------------------------------------------------------------------------
 # _apply_topic_prefix
@@ -214,3 +225,85 @@ def test__kafka_infra_provider__get_consumer_subscription_topics__with_prefix__r
 
     # Assert
     assert result == ("staging.events", "staging.commands")
+
+
+# ---------------------------------------------------------------------------
+# Composition — a container holding the infra and client providers must build
+# ---------------------------------------------------------------------------
+
+
+class _SettingsProvider(Provider):
+    """Supplies the settings objects the kit's providers ask the container for."""
+
+    scope = Scope.APP
+
+    def __init__(self, infra_settings: BaseKafkaInfraSettings) -> None:
+        super().__init__()
+        self._infra_settings = infra_settings
+
+    @provide
+    def producer_settings(self) -> ProducerLifecycleSettingsProtocol:
+        return BaseKafkaProducerSettings(bootstrap_servers="localhost:9092")
+
+    @provide
+    def consumer_settings(self) -> ConsumerSettingsProtocol:
+        return BaseKafkaConsumerSettings(bootstrap_servers="localhost:9092", group_id="test-group")
+
+    @provide
+    def producer_infra_settings(self) -> KafkaProducerInfraSettingsProtocol:
+        return self._infra_settings
+
+    @provide
+    def consumer_infra_settings(self) -> KafkaConsumerInfraSettingsProtocol:
+        return self._infra_settings
+
+
+def _make_container():
+    infra_settings = BaseKafkaInfraSettings(
+        topic_prefix="prod",
+        topic_catalog={"orders": KafkaTopicSettings(num_partitions=6, replication_factor=2)},
+        consumer_subscriptions=["orders"],
+    )
+    return make_async_container(
+        KafkaInfraProvider(),
+        AsyncKafkaProducerProvider(),
+        AsyncKafkaConsumerProvider(),
+        _SettingsProvider(infra_settings),
+    )
+
+
+async def test__kafka_infra_provider__with_client_providers__container_builds():
+    # Arrange / Act — the graph is validated here
+    container = _make_container()
+
+    # Assert
+    assert container is not None
+    await container.close()
+
+
+async def test__kafka_infra_provider__with_client_providers__resolves_producer_topic_configs():
+    # Arrange
+    container = _make_container()
+
+    # Act
+    try:
+        topics = await container.get(Sequence[TopicConfigProtocol] | None)
+    finally:
+        await container.close()
+
+    # Assert
+    assert [topic.name for topic in topics] == ["prod.orders"]
+
+
+async def test__kafka_infra_provider__with_client_providers__resolves_consumer_subscriptions():
+    # Arrange
+    container = _make_container()
+
+    # Act
+    try:
+        subscriptions = await container.get(tuple[str, ...] | None)
+    finally:
+        await container.close()
+
+    # Assert
+    assert subscriptions == ("prod.orders",)

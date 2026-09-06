@@ -68,6 +68,22 @@ async def test__managed_kafka_client__without_on_started__no_error():
         pass
 
 
+async def test__managed_kafka_client__on_started_raises__client_is_stopped():
+    # Arrange
+    client = MagicMock()
+    client.start = AsyncMock()
+    client.stop = AsyncMock()
+    on_started = AsyncMock(side_effect=RuntimeError("hook failed"))
+
+    # Act
+    with pytest.raises(RuntimeError, match="hook failed"):
+        async with managed_kafka_client(client, name="x", on_started=on_started):
+            pass
+
+    # Assert — the started client must not be left running
+    client.stop.assert_awaited_once()
+
+
 # ---------------------------------------------------------------------------
 # on_stopped callback
 # ---------------------------------------------------------------------------

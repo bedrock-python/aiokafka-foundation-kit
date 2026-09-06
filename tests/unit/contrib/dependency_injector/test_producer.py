@@ -113,3 +113,90 @@ async def test__producer_resource__passes_topics(producer_settings):
 
     # Assert
     assert captured["topics"] is mock_topics
+
+
+# ---------------------------------------------------------------------------
+# Container wiring — topics must not have to be overridden
+# ---------------------------------------------------------------------------
+
+
+async def test__kafka_producer_container__topics_not_overridden__resolves_producer(producer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    mock_producer = MagicMock()
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, *, topics=None, auto_create_topics=False, **kw):
+        yield mock_producer
+
+    container = KafkaProducerContainer()
+    container.kafka_settings.override(producer_settings)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.producer.producer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        result = await container.producer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert result is mock_producer
+
+
+async def test__kafka_producer_container__topics_not_overridden__passes_none_to_lifecycle(producer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    captured: dict = {}
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, *, topics=None, auto_create_topics=False, **kw):
+        captured["topics"] = topics
+        yield MagicMock()
+
+    container = KafkaProducerContainer()
+    container.kafka_settings.override(producer_settings)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.producer.producer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        await container.producer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert captured["topics"] is None
+
+
+async def test__kafka_producer_container__topics_overridden__passes_them_to_lifecycle(producer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    topics = [MagicMock()]
+    captured: dict = {}
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, *, topics=None, auto_create_topics=False, **kw):
+        captured["topics"] = topics
+        yield MagicMock()
+
+    container = KafkaProducerContainer()
+    container.kafka_settings.override(producer_settings)
+    container.topics.override(topics)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.producer.producer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        await container.producer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert captured["topics"] == topics
