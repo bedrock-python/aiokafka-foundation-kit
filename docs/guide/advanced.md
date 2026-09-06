@@ -19,8 +19,7 @@ from collections.abc import Sequence
 
 from dishka import Provider, Scope, make_async_container, provide
 
-from aiokafka_foundation_kit.config.producer import ProducerLifecycleSettingsProtocol
-from aiokafka_foundation_kit.config.topic import TopicConfigProtocol
+from aiokafka_foundation_kit.config import ProducerLifecycleSettingsProtocol, TopicConfigProtocol
 from aiokafka_foundation_kit.contrib.di import AsyncKafkaProducerProvider
 from aiokafka_foundation_kit.contrib.models import BaseKafkaProducerSettings
 

@@ -152,7 +152,7 @@ one process runs several clients.
 |---|---|
 | `dumps_bytes`, `loads_bytes`, `managed_kafka_client` | `aiokafka_foundation_kit.utils` |
 | `KafkaConnectionSettingsProtocol`, `KafkaSaslSettingsProtocol`, `KafkaSslSettingsProtocol` | `aiokafka_foundation_kit.config` |
-| `ProducerLifecycleSettingsProtocol` | `aiokafka_foundation_kit.config.producer` — it is *not* re-exported by `.config` |
+| `ProducerLifecycleSettingsProtocol` | `aiokafka_foundation_kit.config` (or `.config.producer`) |
 | `KafkaSecurityProtocol`, `KafkaSaslMechanism`, `KafkaAcks`, `KafkaCompressionType`, `KafkaOffsetReset` | `aiokafka_foundation_kit.config.kafka`, or `aiokafka_foundation_kit.contrib.models` |
 | every contrib name | its own submodule — `contrib/__init__.py` exports nothing |
 
