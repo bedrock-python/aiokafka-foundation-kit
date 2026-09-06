@@ -9,6 +9,16 @@
 
 Async Kafka foundation library with producer, consumer, metrics, and Dishka providers built on [aiokafka](https://github.com/aio-libs/aiokafka).
 
+> [!TIP]
+> **Building this with an AI assistant?** Hand it
+> **[one page](https://bedrock-python.github.io/aiokafka-foundation-kit/agents/)** instead
+> of the whole site: the public API with every settings field and its real default, the
+> producer and consumer lifecycle and commit semantics, the rules that break code when
+> they are broken, the mistakes models actually make with this API, and a map of which
+> page to fetch for the rest. Every docs page is also served as raw Markdown at its own
+> URL, and a **Copy page** button at the top of each one hands it straight to a chat
+> window.
+
 ## Features
 
 - 🚀 **AsyncIO-first**: Built on top of `aiokafka` for high-performance async operations
@@ -96,6 +106,8 @@ await runner.start()
 ## Documentation
 
 Full documentation at [bedrock-python.github.io/aiokafka-foundation-kit](https://bedrock-python.github.io/aiokafka-foundation-kit/).
+
+[For AI agents](https://bedrock-python.github.io/aiokafka-foundation-kit/agents/) is the whole library on one page — the API surface, the rules that break code when they are broken, the mistakes models make, and a map of which page to fetch for the rest — written to be handed to a coding assistant.
 
 ## Development
 
