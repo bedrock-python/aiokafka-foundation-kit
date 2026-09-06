@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.1...aiokafka-foundation-kit-v0.1.2) (2026-09-06)
+
+
+### Documentation
+
+* org-wide security policy and code of conduct ([#15](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/15)) ([015afa6](https://github.com/bedrock-python/aiokafka-foundation-kit/commit/015afa62d9ea335de7c910ff77fbc2600af77567))
+
 ## [0.1.1](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.0...aiokafka-foundation-kit-v0.1.1) (2026-09-05)
 
 
