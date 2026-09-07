@@ -177,6 +177,35 @@ topics = [
 await ensure_topics_async(topics, settings)
 ```
 
+Every other refusal by the broker is raised as the aiokafka error behind it —
+`InvalidReplicationFactorError` when the replication factor is above the broker count,
+`InvalidTopicError` for an unusable name — and the topics after it in the sequence are not
+attempted. An existing topic is never reshaped: a changed partition count or
+`topic_configs` on a topic that is already there does nothing.
+
+### Placing partitions yourself
+
+`replica_assignment` maps a partition id to the broker ids that should hold it. Give one
+and it decides the shape of the topic:
+
+```python
+topics = [
+    TopicConfig(
+        name="orders",
+        num_partitions=3,
+        replication_factor=2,
+        replica_assignment={0: [1, 2], 1: [2, 3], 2: [3, 1]},
+    ),
+]
+
+await ensure_topics_async(topics, settings)
+```
+
+The two counts may only repeat what the assignment says — three partitions, two replicas
+each, above — or be `-1`, which is how aiokafka spells "the assignment decides". Anything
+else is a `ValueError` before the request is sent, so a stale count can never quietly
+create a topic of a different shape.
+
 ---
 
 ## JSON serialisation
