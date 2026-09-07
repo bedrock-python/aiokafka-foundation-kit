@@ -64,8 +64,8 @@ Four nouns:
   hook, the yield, the stop and the optional `on_stopped` hook. `producer_lifecycle` can
   also run `ensure_topics_async` first.
 * **Topics** — `TopicConfig` is a frozen dataclass describing one topic;
-  `ensure_topics_async(topics, settings)` creates each one and treats an existing topic as
-  success.
+  `ensure_topics_async(topics, settings)` creates each one, reads the broker's per-topic
+  reply, and treats an existing topic as success.
 
 The contrib packages are three thin wrappers over that: `contrib.di` for dishka providers,
 `contrib.dependency_injector` for declarative containers, `contrib.telemetry` for one call
@@ -191,7 +191,10 @@ the `Literal` aliases themselves: `security_protocol: str` does not satisfy
 
 `TopicConfigProtocol` is `name`, `num_partitions`, `replication_factor`,
 `replica_assignment`, `topic_configs`, declared read-only so that a frozen dataclass — the
-kit's own `TopicConfig` among them — type-checks where the protocol is expected.
+kit's own `TopicConfig` among them — type-checks where the protocol is expected. A config
+carrying a `replica_assignment` is created from it: the assignment fixes both the partition
+count and the replication factor, so the two count fields may only repeat what it says or
+be `-1` — see rule 15.
 
 ### Pydantic settings — `contrib.models`
 
@@ -371,19 +374,28 @@ Extra `**kwargs` go straight to the instrumentor.
     and your per-batch work has to finish inside `max_poll_interval_ms` (300 s by default)
     or the broker evicts the member and the partitions rebalance under you.
 14. **`ensure_topics_async` tolerates exactly one failure.** Each topic is created on its
-    own and `TopicAlreadyExistsError` is logged and ignored; every other broker error —
-    `replication_factor` above the broker count is the usual one — propagates and aborts
-    the rest of the sequence. It also never *changes* an existing topic: partition counts
-    and `topic_configs` of a topic that already exists are left alone.
-15. **`check_kafka_health_async` opens a real producer connection**, and its
+    own, and the broker's answer for it is read: an existing topic is logged at `DEBUG`
+    and ignored, every other refusal is raised as the aiokafka error for that error code —
+    `InvalidReplicationFactorError` for a `replication_factor` above the broker count,
+    `InvalidTopicError` for an unusable name — and aborts the rest of the sequence. It
+    also never *changes* an existing topic: partition counts and `topic_configs` of a
+    topic that already exists are left alone.
+15. **A `replica_assignment` decides the shape of the topic.** Give one and it fixes both
+    the partition count and the replication factor; `num_partitions` and
+    `replication_factor` may then only repeat what it says (`num_partitions ==
+    len(replica_assignment)`, `replication_factor ==` the length of each replica list) or
+    be `-1`, which is how aiokafka spells "the assignment decides". Anything else is a
+    `ValueError` naming the topic, raised before the request is sent. An empty dict counts
+    as no assignment.
+16. **`check_kafka_health_async` opens a real producer connection**, and its
     `timeout_seconds` becomes `request_timeout_ms`, not an `asyncio.timeout` around the
     call — a DNS or TCP stall can outlast it. It returns `False` (and logs a traceback at
     `ERROR`) for `TimeoutError`, `KafkaError` and `OSError`, and lets anything else out.
     It is a probe, not a cheap one; do not call it per request.
-16. **A `topic_prefix` joins with a dot** — `prefix` + `"."` + `name` — and only
+17. **A `topic_prefix` joins with a dot** — `prefix` + `"."` + `name` — and only
     `KafkaInfraProvider` applies it. `TopicConfig.name` and the topic names you hand
     `consumer_lifecycle` are physical names, already prefixed.
-17. **The protocols are structural and unenforced.** Nothing validates a hand-rolled
+18. **The protocols are structural and unenforced.** Nothing validates a hand-rolled
     settings object; a typo or a missing attribute is an `AttributeError` at client
     construction, and `get_sasl_password` must be a callable, not a string.
 
@@ -476,9 +488,9 @@ The library defines no exception class of its own. What you will see:
 | `pydantic.ValidationError` | a `contrib.models` settings object: a missing `bootstrap_servers` or `group_id`, a value outside a `Literal`, an incomplete `SASL_*` or `SSL` block, `auto_create_topics=True` with no `default_replication_factor`. |
 | `RuntimeError` | a client built outside a running loop, or a compression codec whose library is missing. |
 | `FileNotFoundError`, `ssl.SSLError` | a TLS certificate or key path that cannot be read or parsed, raised while the settings are translated — see rule 2. |
-| `ValueError` | `acks` of `"0"` or `"1"` while `enable_idempotence` is on. |
+| `ValueError` | `acks` of `"0"` or `"1"` while `enable_idempotence` is on; a `TopicConfig` whose counts contradict its `replica_assignment` — rule 15. |
 | `AttributeError` | a settings object that does not satisfy the protocol. |
-| `aiokafka.errors.KafkaError` and its subclasses | every broker interaction. `TopicAlreadyExistsError` is the one `ensure_topics_async` handles; `KafkaConnectionError`, `KafkaTimeoutError`, `NodeNotReadyError`, `UnknownTopicOrPartitionError`, `CommitFailedError` and the rest reach you unchanged. |
+| `aiokafka.errors.KafkaError` and its subclasses | every broker interaction. `TopicAlreadyExistsError` is the one `ensure_topics_async` handles; `InvalidReplicationFactorError`, `InvalidTopicError`, `KafkaConnectionError`, `KafkaTimeoutError`, `NodeNotReadyError`, `UnknownTopicOrPartitionError`, `CommitFailedError` and the rest reach you unchanged. |
 | `dishka.exceptions.GraphMissingFactoryError` | a container missing one of the exact types in rule 10. |
 | `dependency_injector.errors.Error` | `kafka_settings` never overridden on a container — rule 11. |
 
