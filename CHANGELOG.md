@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.2...aiokafka-foundation-kit-v0.1.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* create topics again — NewTopic never got a usable argument set ([#23](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/23)) ([f0dd3ce](https://github.com/bedrock-python/aiokafka-foundation-kit/commit/f0dd3cecf52cc264bbe5a1ab067ae85de897e095))
+
 ## [0.1.2](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.1...aiokafka-foundation-kit-v0.1.2) (2026-09-06)
 
 
