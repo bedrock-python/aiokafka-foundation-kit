@@ -259,6 +259,12 @@ non-string.
 
 The mixins are exported separately for composing your own model:
 `KafkaConnectionMixin`, `KafkaSaslMixin`, `KafkaSslMixin`, `KafkaAutoCreateMixin`.
+The same composition is the place for fields the library does not read. Neither model
+carries an observability flag such as `metrics_enabled`: the library collects no metrics,
+so there is nothing for it to switch. Put it in a mixin of your own and inherit that in
+both your producer and your consumer subclass; one `Protocol` then describes both. Set
+`model_config = ConfigDict(extra="forbid")` on those subclasses if an unknown key should
+be a `ValidationError` rather than silently dropped.
 
 ### dishka — `contrib.di`
 
@@ -502,7 +508,7 @@ Fetch a page when the task is the one named beside it.
 |---|---|
 | [Home](index.md) | the feature list, the extras, the shortest possible example |
 | [Quick start](guide/quickstart.md) | writing the first producer or consumer end to end, health checks, topic creation, JSON helpers |
-| [Configuration](guide/configuration.md) | every settings field and its default, the security modes, loading from the environment, implementing a protocol by hand |
+| [Configuration](guide/configuration.md) | every settings field and its default, the security modes, loading from the environment, adding fields of your own, implementing a protocol by hand |
 | [Advanced](guide/advanced.md) | dishka providers, dependency-injector containers, OpenTelemetry, topic prefixes, `managed_kafka_client`, `build_kafka_common_config` |
 | [API reference](reference/index.md) | an exact signature or docstring — HTML only, see above |
 | [Changelog](changelog.md) | what changed between versions |
