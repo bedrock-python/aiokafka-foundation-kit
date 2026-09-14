@@ -236,6 +236,10 @@ class ConsumerSettings(BaseKafkaConsumerSettings, KafkaMetricsMixin):
     `pydantic.ValidationError` at construction for your subclass only; the base models keep
     their default.
 
+    There is no strict variant of the models, on purpose. The subclass you already write to
+    add your own fields is where `extra="forbid"` goes; a second pair of classes whose only
+    content is that line would double the surface for it.
+
 ---
 
 ## Custom settings (protocol implementation)
