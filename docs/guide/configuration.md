@@ -196,6 +196,52 @@ settings = AppSettings()
 
 ---
 
+## Adding your own fields
+
+The models carry what the library reads, plus the two caller-side defaults noted above.
+There is no observability flag on either of them: the library collects no metrics, on the
+producer side or the consumer side (the `telemetry` extra is tracing only), so a
+`metrics_enabled` field would be a switch wired to nothing. A flag like that belongs with
+the code that owns the collector. Keep it in a mixin of your own and compose it into both
+subclasses, the way the library's own `Kafka*Mixin`s are composed — one `Protocol` with a
+`metrics_enabled: bool` member then describes producer and consumer settings alike:
+
+```python
+from pydantic import BaseModel, ConfigDict
+
+from aiokafka_foundation_kit.contrib.models import (
+    BaseKafkaConsumerSettings,
+    BaseKafkaProducerSettings,
+)
+
+
+class KafkaMetricsMixin(BaseModel):
+    metrics_enabled: bool = False
+
+
+class ProducerSettings(BaseKafkaProducerSettings, KafkaMetricsMixin):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConsumerSettings(BaseKafkaConsumerSettings, KafkaMetricsMixin):
+    model_config = ConfigDict(extra="forbid")
+```
+
+!!! note "Unknown keys are dropped, not rejected"
+    The base models are plain `BaseModel`s, so pydantic's default `extra="ignore"` applies:
+    `BaseKafkaProducerSettings(bootstrap_servers="b:9092", metrics_enabled=True)` succeeds
+    and the instance has no `metrics_enabled`. A field you forgot to add, or a typo in one
+    you did, surfaces later — as an `AttributeError`, or as a default your code falls back
+    to — rather than as an error at startup. The `extra="forbid"` above turns it into a
+    `pydantic.ValidationError` at construction for your subclass only; the base models keep
+    their default.
+
+    There is no strict variant of the models, on purpose. The subclass you already write to
+    add your own fields is where `extra="forbid"` goes; a second pair of classes whose only
+    content is that line would double the surface for it.
+
+---
+
 ## Custom settings (protocol implementation)
 
 If you prefer not to depend on Pydantic, implement the protocol directly:
