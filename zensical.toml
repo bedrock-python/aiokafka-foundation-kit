@@ -1,6 +1,6 @@
 [project]
 site_name = "aiokafka-foundation-kit"
-site_description = "Async Kafka foundation library with producer, consumer, metrics, and Dishka providers built on aiokafka"
+site_description = "Async Kafka foundation library — factories, settings, DI providers and OpenTelemetry on top of aiokafka"
 site_author = "Alex Shalaev"
 repo_name = "bedrock-python/aiokafka-foundation-kit"
 repo_url = "https://github.com/bedrock-python/aiokafka-foundation-kit"

@@ -101,8 +101,8 @@ uv sync --group dev --all-extras
 make check
 
 # Run tests
-make test-unit
-make test
+make test-unit  # unit tests, no Docker required
+make test       # unit + integration tests, requires Docker
 ```
 
 ## License

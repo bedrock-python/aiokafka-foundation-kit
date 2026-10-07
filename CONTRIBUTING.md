@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This document covers everything you
 ```bash
 git clone https://github.com/bedrock-python/aiokafka-foundation-kit.git
 cd aiokafka-foundation-kit
-uv sync --group dev
+uv sync --group dev --all-extras
 uv run pre-commit install --hook-type commit-msg
 ```
 
@@ -17,7 +17,7 @@ uv run pre-commit install --hook-type commit-msg
 make check            # ruff lint + format check + mypy
 make test-unit        # unit tests, no Docker required
 make test-integration # integration tests, requires Docker
-make test             # full suite with 90% coverage threshold
+make test             # unit + integration tests (requires Docker), 90% coverage threshold
 ```
 
 ## Code style
