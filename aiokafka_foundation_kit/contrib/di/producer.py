@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
 from aiokafka import AIOKafkaProducer
@@ -19,13 +19,25 @@ class AsyncKafkaProducerProvider(Provider):
 
     Topics passed via the container are auto-created when
     ``settings.auto_create_topics`` is enabled.
+
+    Args:
+        value_serializer: Optional custom value serializer for the producer,
+            forwarded to :func:`producer_lifecycle`. Defaults to ``dumps_bytes``.
+            It is a constructor argument because dishka resolves by type, and a
+            bare callable has none to resolve by.
     """
 
     scope = Scope.APP
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        value_serializer: Callable[[Any], bytes] | None = None,
+        **kwargs: Any,
+    ) -> None:
         check_dishka()
         super().__init__(*args, **kwargs)
+        self._value_serializer = value_serializer
 
     @provide
     async def get_kafka_producer(
@@ -38,5 +50,6 @@ class AsyncKafkaProducerProvider(Provider):
             kafka_settings,
             topics=topics,
             auto_create_topics=kafka_settings.auto_create_topics,
+            value_serializer=self._value_serializer,
         ) as producer:
             yield producer

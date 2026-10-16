@@ -103,3 +103,61 @@ async def test__async_kafka_consumer_provider__get_kafka_consumer__no_topics__pa
 
     # Assert
     assert captured["topics"] is None
+
+
+# ---------------------------------------------------------------------------
+# value_deserializer — a constructor argument, forwarded to consumer_lifecycle
+# ---------------------------------------------------------------------------
+
+
+async def test__async_kafka_consumer_provider__value_deserializer__forwarded_to_lifecycle(
+    consumer_settings,
+):
+    # Arrange
+    captured: dict = {}
+
+    def codec(value):
+        return value
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, **kw):
+        captured.update(kw)
+        yield MagicMock()
+
+    provider = AsyncKafkaConsumerProvider(value_deserializer=codec)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.di.consumer.consumer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        async for _ in provider.get_kafka_consumer(consumer_settings, topics=None):
+            pass
+
+    # Assert
+    assert captured["value_deserializer"] is codec
+
+
+async def test__async_kafka_consumer_provider__no_value_deserializer__passes_none(
+    consumer_settings,
+):
+    # Arrange
+    captured: dict = {}
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, **kw):
+        captured.update(kw)
+        yield MagicMock()
+
+    provider = AsyncKafkaConsumerProvider()
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.di.consumer.consumer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        async for _ in provider.get_kafka_consumer(consumer_settings, topics=None):
+            pass
+
+    # Assert
+    assert captured["value_deserializer"] is None

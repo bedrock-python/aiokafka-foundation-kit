@@ -118,6 +118,38 @@ async with consumer_lifecycle(
         ...
 ```
 
+### Values that are not JSON
+
+The consumer decodes every value with `loads_bytes` inside aiokafka's fetcher, before your
+code sees the record. A value that is not valid JSON raises out of `getmany()` (or the
+`async for`) at the same offset on every call: nothing is committed, the records fetched
+alongside it are lost with the exception, and a restart hits the same record.
+
+When a topic may carry anything else — Avro, protobuf, plain text, or a producer you do not
+control — take the bytes as they are and decode in the handler, where a bad record can be
+logged and skipped:
+
+```python
+import json
+
+async with consumer_lifecycle(
+    settings,
+    topics=("orders",),
+    value_deserializer=lambda raw: raw,
+) as consumer:
+    async for msg in consumer:
+        try:
+            order = json.loads(msg.value)
+        except (TypeError, ValueError):   # None (a tombstone) or not JSON
+            logger.warning("skipping offset %s: not a JSON value", msg.offset)
+        else:
+            await handle(order)
+        await consumer.commit()
+```
+
+`producer_lifecycle` takes `value_serializer` the same way, and both factories take it
+directly.
+
 ### Low-level factory
 
 ```python
@@ -211,7 +243,8 @@ create a topic of a different shape.
 ## JSON serialisation
 
 `dumps_bytes` / `loads_bytes` are the default serialisers used internally and can be used
-standalone. When [orjson](https://github.com/ijl/orjson) is installed (`pip install
+standalone. To replace them, pass `value_serializer` / `value_deserializer` to the lifecycle,
+the factory or the DI provider or container. When [orjson](https://github.com/ijl/orjson) is installed (`pip install
 aiokafka-foundation-kit[orjson]`) it is used automatically; otherwise the standard `json`
 module is used as a fallback.
 

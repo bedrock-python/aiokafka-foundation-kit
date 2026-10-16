@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from unittest.mock import MagicMock
+from contextlib import asynccontextmanager
+from unittest.mock import MagicMock, patch
 
 import pytest
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from dishka import Provider, Scope, make_async_container, provide
 
 import aiokafka_foundation_kit.contrib.di._deps as deps_mod
@@ -307,3 +309,45 @@ async def test__kafka_infra_provider__with_client_providers__resolves_consumer_s
 
     # Assert
     assert subscriptions == ("prod.orders",)
+
+
+async def test__kafka_infra_provider__with_client_providers__serde_reaches_the_lifecycles():
+    # Arrange — the codecs travel as constructor arguments, since dishka cannot provide a bare callable by type
+    captured: dict = {}
+
+    def raw(value: bytes | None) -> bytes | None:
+        return value
+
+    def to_bytes(value: object) -> bytes:
+        return str(value).encode()
+
+    @asynccontextmanager
+    async def consumer_lifecycle(settings, **kw):
+        captured["value_deserializer"] = kw["value_deserializer"]
+        yield MagicMock()
+
+    @asynccontextmanager
+    async def producer_lifecycle(settings, **kw):
+        captured["value_serializer"] = kw["value_serializer"]
+        yield MagicMock()
+
+    container = make_async_container(
+        KafkaInfraProvider(),
+        AsyncKafkaProducerProvider(value_serializer=to_bytes),
+        AsyncKafkaConsumerProvider(value_deserializer=raw),
+        _SettingsProvider(BaseKafkaInfraSettings(consumer_subscriptions=["orders"])),
+    )
+
+    with (
+        patch("aiokafka_foundation_kit.contrib.di.consumer.consumer_lifecycle", consumer_lifecycle),
+        patch("aiokafka_foundation_kit.contrib.di.producer.producer_lifecycle", producer_lifecycle),
+    ):
+        # Act
+        try:
+            await container.get(AIOKafkaConsumer)
+            await container.get(AIOKafkaProducer)
+        finally:
+            await container.close()
+
+    # Assert
+    assert captured == {"value_deserializer": raw, "value_serializer": to_bytes}

@@ -54,6 +54,10 @@ Dishka resolves by exact type and ignores the Python `= None` default, so the co
 hold a factory for `Sequence[TopicConfigProtocol] | None` — provide it yourself as above, or
 add `KafkaInfraProvider`, which supplies it from the topic catalog.
 
+A custom value serializer is a constructor argument, since a bare callable has no type for
+dishka to resolve: `AsyncKafkaProducerProvider(value_serializer=...)`. Left out, it is
+`dumps_bytes`.
+
 Inject `AIOKafkaProducer` wherever you need to send messages:
 
 ```python
@@ -90,6 +94,9 @@ async def get_kafka_consumer(
 
 Same rule as the producer: the container needs a factory for `tuple[str, ...] | None`, either
 your own or `KafkaInfraProvider`.
+
+`AsyncKafkaConsumerProvider(value_deserializer=lambda raw: raw)` hands the consumer raw bytes
+instead of decoded JSON — see [values that are not JSON](quickstart.md#values-that-are-not-json).
 
 ### KafkaInfraProvider
 
@@ -170,6 +177,7 @@ The container exposes:
 | `kafka_settings` | `Dependency` | Inject a `ProducerLifecycleSettingsProtocol` — no default, override it |
 | `topics` | `Object` | `Sequence[TopicConfigProtocol]`, defaults to `None` |
 | `auto_create_topics` | `Object` | `bool`, defaults to `False` |
+| `value_serializer` | `Object` | `Callable[[Any], bytes]`, defaults to `None` (`dumps_bytes`) |
 | `producer` | `Resource` | `AIOKafkaProducer` with full lifecycle |
 
 ### KafkaConsumerContainer
@@ -192,10 +200,12 @@ container.topics.override(["orders", "payments"])
 | --- | --- | --- |
 | `kafka_settings` | `Dependency` | Inject a `ConsumerSettingsProtocol` — no default, override it |
 | `topics` | `Object` | `Sequence[str]` of topic names, defaults to `None` |
+| `value_deserializer` | `Object` | `Callable[[bytes \| None], Any]`, defaults to `None` (`loads_bytes`) |
 | `consumer` | `Resource` | `AIOKafkaConsumer` with full lifecycle |
 
-In both containers `kafka_settings` is the only override that is required — `topics`, and
-`auto_create_topics` on the producer, already carry working defaults.
+In both containers `kafka_settings` is the only override that is required — `topics`, the
+serializer or deserializer, and `auto_create_topics` on the producer, already carry working
+defaults.
 
 ---
 

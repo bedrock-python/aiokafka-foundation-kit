@@ -172,3 +172,66 @@ async def test__kafka_consumer_container__topics_overridden__passes_them_to_life
 
     # Assert
     assert captured["topics"] == ("orders", "payments")
+
+
+# ---------------------------------------------------------------------------
+# Container wiring — value_deserializer is an Object(None) like topics
+# ---------------------------------------------------------------------------
+
+
+async def test__kafka_consumer_container__value_deserializer_not_overridden__passes_none(consumer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    captured: dict = {}
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, **kw):
+        captured.update(kw)
+        yield MagicMock()
+
+    container = KafkaConsumerContainer()
+    container.kafka_settings.override(consumer_settings)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.consumer.consumer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        await container.consumer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert captured["value_deserializer"] is None
+
+
+async def test__kafka_consumer_container__value_deserializer_overridden__passes_it_to_lifecycle(consumer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    captured: dict = {}
+
+    def codec(value):
+        return value
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, **kw):
+        captured.update(kw)
+        yield MagicMock()
+
+    container = KafkaConsumerContainer()
+    container.kafka_settings.override(consumer_settings)
+    container.value_deserializer.override(codec)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.consumer.consumer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        await container.consumer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert captured["value_deserializer"] is codec
