@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.3...aiokafka-foundation-kit-v0.2.0) (2026-10-16)
+
+
+### Features
+
+* pass value_deserializer and value_serializer through the lifecycles and DI providers ([#54](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/54)) ([9629b2b](https://github.com/bedrock-python/aiokafka-foundation-kit/commit/9629b2be9761d87e8fe8d700b1cc05e11c727417)), closes [#50](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/50)
+* warn when ensure_topics_async finds an existing topic that differs from its TopicConfig ([#55](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/55)) ([b0ceac3](https://github.com/bedrock-python/aiokafka-foundation-kit/commit/b0ceac32218a6f378bc1c88f111b388baec0b120)), closes [#51](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/51)
+
+
+### Bug Fixes
+
+* acks "0" and "1" reach aiokafka as integers, so they work with idempotence off ([#52](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/52)) ([be35a20](https://github.com/bedrock-python/aiokafka-foundation-kit/commit/be35a20eb5a665d244300a6568715b47be542ff6)), closes [#48](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/48)
+* stop the client when start() fails or is cancelled, in both lifecycles and the health check ([#53](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/53)) ([f29ac8a](https://github.com/bedrock-python/aiokafka-foundation-kit/commit/f29ac8a7d2557a05f82f6062962a3e53c1ffd9c7)), closes [#49](https://github.com/bedrock-python/aiokafka-foundation-kit/issues/49)
+
 ## [0.1.3](https://github.com/bedrock-python/aiokafka-foundation-kit/compare/aiokafka-foundation-kit-v0.1.2...aiokafka-foundation-kit-v0.1.3) (2026-09-07)
 
 
