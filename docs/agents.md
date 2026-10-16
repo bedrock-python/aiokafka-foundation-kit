@@ -337,9 +337,12 @@ Extra `**kwargs` go straight to the instrumentor.
    from the last committed offset on every restart and rebalance. The factory forwards the
    flag as-is, so a settings object that omits it fails with `AttributeError`, not a
    default.
-5. **`enable_idempotence=True` (the default) allows only `acks="all"`.** aiokafka raises
-   `ValueError: Invalid ACKS parameter` for `"0"` or `"1"`. The `KafkaAcks` alias offers
-   three values; two of them require `enable_idempotence=False`.
+5. **`enable_idempotence=True` (the default) allows only `acks="all"`.** `acks` is a
+   string — `"0"`, `"1"` or `"all"` — and the producer factory hands it to aiokafka as
+   the integer `0` or `1`, or as `"all"`. With idempotence on, aiokafka raises
+   `ValueError: acks=1 not supported if enable_idempotence=True` (or `acks=0`) at
+   construction. The `KafkaAcks` alias offers three values; two of them require
+   `enable_idempotence=False`.
 6. **Only `gzip` compression works out of the box.** `snappy`, `lz4` and `zstd` need
    `cramjam`, which this package does not depend on — without it aiokafka raises
    `RuntimeError: Compression library for lz4 not found` at construction. Install

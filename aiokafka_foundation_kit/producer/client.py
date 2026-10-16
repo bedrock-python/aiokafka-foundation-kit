@@ -13,6 +13,9 @@ from aiokafka_foundation_kit.utils.json import dumps_bytes
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+# aiokafka accepts 0, 1, -1 and "all"; a string "0" or "1" is rejected outright.
+_AIOKAFKA_ACKS: dict[str, int | str] = {"0": 0, "1": 1, "all": "all"}
+
 
 def create_async_kafka_producer(
     settings: ProducerSettingsProtocol,
@@ -20,6 +23,10 @@ def create_async_kafka_producer(
     value_serializer: Callable[[Any], bytes] | None = None,
 ) -> AIOKafkaProducer:
     """Create an ``AIOKafkaProducer`` from settings.
+
+    ``settings.acks`` is a string (``"0"``, ``"1"`` or ``"all"``), which is
+    what an environment loader produces; it is handed to aiokafka as the
+    integer ``0`` or ``1``, or as ``"all"``.
 
     Args:
         settings: Kafka producer settings.
@@ -32,7 +39,7 @@ def create_async_kafka_producer(
     """
     producer_config: dict[str, Any] = {
         **build_kafka_common_config(settings),
-        "acks": settings.acks,
+        "acks": _AIOKAFKA_ACKS.get(settings.acks, settings.acks),
         "compression_type": settings.compression_type,
         "enable_idempotence": settings.enable_idempotence,
         "max_batch_size": settings.max_batch_size,

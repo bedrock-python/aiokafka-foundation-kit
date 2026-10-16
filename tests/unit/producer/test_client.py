@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import get_args
 from unittest.mock import patch
 
+import pytest
 from aiokafka import AIOKafkaProducer
 
+from aiokafka_foundation_kit.config.kafka import KafkaAcks
 from aiokafka_foundation_kit.producer.client import create_async_kafka_producer
 from aiokafka_foundation_kit.utils.json import dumps_bytes
 
@@ -76,6 +79,65 @@ def test__create_async_kafka_producer__settings__forwards_bootstrap_servers(prod
     # Assert
     _, kwargs = mock_cls.call_args
     assert kwargs["bootstrap_servers"] == "localhost:9092"
+
+
+# ---------------------------------------------------------------------------
+# acks — KafkaAcks holds strings, aiokafka takes 0, 1, -1 or "all"
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("acks", "expected"), [("0", 0), ("1", 1), ("all", "all")])
+def test__create_async_kafka_producer__acks__translated_for_aiokafka(producer_settings, acks: str, expected: object):
+    # Arrange
+    producer_settings.acks = acks
+    with patch("aiokafka_foundation_kit.producer.client.AIOKafkaProducer") as mock_cls:
+        # Act
+        create_async_kafka_producer(producer_settings)
+
+    # Assert
+    _, kwargs = mock_cls.call_args
+    assert kwargs["acks"] == expected
+    assert type(kwargs["acks"]) is type(expected)
+
+
+@pytest.mark.parametrize("acks", get_args(KafkaAcks))
+async def test__create_async_kafka_producer__every_kafka_acks_value__constructs_real_producer(
+    producer_settings, acks: str
+):
+    # Arrange — idempotence off, so aiokafka accepts every acks level
+    producer_settings.acks = acks
+    producer_settings.enable_idempotence = False
+
+    # Act
+    result = create_async_kafka_producer(producer_settings)
+
+    # Assert
+    assert isinstance(result, AIOKafkaProducer)
+    await result.stop()
+
+
+@pytest.mark.parametrize("acks", ["0", "1"])
+async def test__create_async_kafka_producer__acks_below_all_with_idempotence__aiokafka_rejects(
+    producer_settings, acks: str
+):
+    # Arrange — the default enable_idempotence=True allows only acks="all"
+    producer_settings.acks = acks
+
+    # Act / Assert
+    with pytest.raises(ValueError, match=f"acks={acks} not supported if enable_idempotence=True"):
+        create_async_kafka_producer(producer_settings)
+
+
+def test__create_async_kafka_producer__acks_already_an_int__forwarded_unchanged(producer_settings):
+    # Arrange — a hand-rolled settings object that stores aiokafka's own value
+    producer_settings.acks = -1
+    with patch("aiokafka_foundation_kit.producer.client.AIOKafkaProducer") as mock_cls:
+        # Act
+        create_async_kafka_producer(producer_settings)
+
+    # Assert
+    _, kwargs = mock_cls.call_args
+    assert kwargs["acks"] == -1
 
 
 # ---------------------------------------------------------------------------
