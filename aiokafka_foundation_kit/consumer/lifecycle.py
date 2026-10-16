@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aiokafka_foundation_kit.consumer.client import create_async_kafka_consumer
 from aiokafka_foundation_kit.utils.lifecycle import managed_kafka_client
@@ -24,6 +24,7 @@ async def consumer_lifecycle(
     name: str = "consumer",
     on_started: Callable[[AIOKafkaConsumer], Awaitable[None]] | None = None,
     on_stopped: Callable[[AIOKafkaConsumer], Awaitable[None]] | None = None,
+    value_deserializer: Callable[[bytes | None], Any] | None = None,
 ) -> AsyncIterator[AIOKafkaConsumer]:
     """Manage a Kafka consumer's lifecycle as an async context.
 
@@ -35,8 +36,17 @@ async def consumer_lifecycle(
         name: Client name used in log messages. Useful when running multiple consumers.
         on_started: Optional async hook invoked after a successful start.
         on_stopped: Optional async hook invoked after a successful stop.
+        value_deserializer: Optional custom value deserializer, forwarded to
+            :func:`create_async_kafka_consumer`. Defaults to ``loads_bytes``.
+            A record it cannot decode raises out of ``getmany()`` at the same
+            offset on every call, so pass ``lambda raw: raw`` and decode in the
+            handler when a topic may carry malformed values.
     """
-    consumer = create_async_kafka_consumer(settings, list(topics) if topics else None)
+    consumer = create_async_kafka_consumer(
+        settings,
+        list(topics) if topics else None,
+        value_deserializer=value_deserializer,
+    )
     async with managed_kafka_client(
         consumer,
         name=name,

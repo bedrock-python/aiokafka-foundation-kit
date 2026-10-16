@@ -200,3 +200,66 @@ async def test__kafka_producer_container__topics_overridden__passes_them_to_life
 
     # Assert
     assert captured["topics"] == topics
+
+
+# ---------------------------------------------------------------------------
+# Container wiring — value_serializer is an Object(None) like topics
+# ---------------------------------------------------------------------------
+
+
+async def test__kafka_producer_container__value_serializer_not_overridden__passes_none(producer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    captured: dict = {}
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, **kw):
+        captured.update(kw)
+        yield MagicMock()
+
+    container = KafkaProducerContainer()
+    container.kafka_settings.override(producer_settings)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.producer.producer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        await container.producer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert captured["value_serializer"] is None
+
+
+async def test__kafka_producer_container__value_serializer_overridden__passes_it_to_lifecycle(producer_settings):
+    # Arrange
+    from contextlib import asynccontextmanager  # noqa: PLC0415
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    captured: dict = {}
+
+    def codec(value):
+        return value
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, **kw):
+        captured.update(kw)
+        yield MagicMock()
+
+    container = KafkaProducerContainer()
+    container.kafka_settings.override(producer_settings)
+    container.value_serializer.override(codec)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.dependency_injector.producer.producer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        await container.producer()
+        await container.shutdown_resources()
+
+    # Assert
+    assert captured["value_serializer"] is codec

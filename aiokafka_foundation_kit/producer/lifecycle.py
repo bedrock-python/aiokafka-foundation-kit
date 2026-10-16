@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aiokafka_foundation_kit.producer.client import create_async_kafka_producer
 from aiokafka_foundation_kit.topics.management import ensure_topics_async
@@ -27,6 +27,7 @@ async def producer_lifecycle(
     name: str = "producer",
     on_started: Callable[[AIOKafkaProducer], Awaitable[None]] | None = None,
     on_stopped: Callable[[AIOKafkaProducer], Awaitable[None]] | None = None,
+    value_serializer: Callable[[Any], bytes] | None = None,
 ) -> AsyncIterator[AIOKafkaProducer]:
     """Manage a Kafka producer's lifecycle as an async context.
 
@@ -42,11 +43,13 @@ async def producer_lifecycle(
         name: Client name used in log messages. Useful when running multiple producers.
         on_started: Optional async hook invoked after a successful start.
         on_stopped: Optional async hook invoked after a successful stop.
+        value_serializer: Optional custom value serializer, forwarded to
+            :func:`create_async_kafka_producer`. Defaults to ``dumps_bytes``.
     """
     if auto_create_topics and topics:
         await ensure_topics_async(topics, settings)
 
-    producer = create_async_kafka_producer(settings)
+    producer = create_async_kafka_producer(settings, value_serializer=value_serializer)
     async with managed_kafka_client(
         producer,
         name=name,

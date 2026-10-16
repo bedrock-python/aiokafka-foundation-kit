@@ -129,9 +129,9 @@ running loop, so building a client at import time raises `RuntimeError`.
 | Name | Signature | Returns |
 |---|---|---|
 | `create_async_kafka_producer` | `(settings, *, value_serializer=None)` | `AIOKafkaProducer`, **not started** |
-| `producer_lifecycle` | `(settings, *, topics=None, auto_create_topics=False, name="producer", on_started=None, on_stopped=None)` | async context manager yielding a started `AIOKafkaProducer` |
+| `producer_lifecycle` | `(settings, *, topics=None, auto_create_topics=False, name="producer", on_started=None, on_stopped=None, value_serializer=None)` | async context manager yielding a started `AIOKafkaProducer` |
 | `create_async_kafka_consumer` | `(settings, topics=None, *, value_deserializer=None)` | `AIOKafkaConsumer`, **not started** |
-| `consumer_lifecycle` | `(settings, *, topics=None, name="consumer", on_started=None, on_stopped=None)` | async context manager yielding a started `AIOKafkaConsumer` |
+| `consumer_lifecycle` | `(settings, *, topics=None, name="consumer", on_started=None, on_stopped=None, value_deserializer=None)` | async context manager yielding a started `AIOKafkaConsumer` |
 | `ensure_topics_async` | `(topics, settings)` | `None` |
 | `TopicConfig` | frozen dataclass `(name, num_partitions, replication_factor, replica_assignment=None, topic_configs=None)` | — |
 | `check_kafka_health_async` | `(settings, timeout_seconds=5.0)` | `bool` |
@@ -144,7 +144,8 @@ Also at the root, for annotations only: `KafkaSettingsProtocol`, `ProducerSettin
 `topics` on `producer_lifecycle` is a `Sequence[TopicConfigProtocol]`; `topics` on
 `consumer_lifecycle` is a `tuple[str, ...]` of names. `on_started` and `on_stopped` are
 async callables taking the client. `name` appears only in log messages and matters when
-one process runs several clients.
+one process runs several clients. `value_serializer` and `value_deserializer` go to the
+factory unchanged; `None` keeps `dumps_bytes` / `loads_bytes`.
 
 ### Public, but not at the root
 
@@ -277,6 +278,11 @@ be a `ValidationError` rather than silently dropped.
 | `AsyncKafkaConsumerProvider` | `AIOKafkaConsumer` | `ConsumerSettingsProtocol` and `tuple[str, ...] | None` |
 | `KafkaInfraProvider` | `Sequence[TopicConfig]`, `tuple[str, ...]`, and both of those under the optional types the two providers above ask for | `KafkaProducerInfraSettingsProtocol` and `KafkaConsumerInfraSettingsProtocol` |
 
+`AsyncKafkaProducerProvider(value_serializer=None)` and
+`AsyncKafkaConsumerProvider(value_deserializer=None)` take the codec as a constructor
+argument — a bare callable has no type for dishka to resolve — and forward it to the
+lifecycle.
+
 `AsyncKafkaProducerProvider` is the only place `settings.auto_create_topics` is read.
 `KafkaInfraProvider` turns `topic_catalog` into `TopicConfig` objects and
 `consumer_subscriptions` into names, applying `topic_prefix` as `f"{prefix}.{name}"`.
@@ -293,8 +299,8 @@ argument of both client providers; see rule 10 for a container without it.
 
 | Container | Providers |
 |---|---|
-| `KafkaProducerContainer` | `kafka_settings` (`Dependency`), `topics` (`Object(None)`), `auto_create_topics` (`Object(False)`), `producer` (`Resource`) |
-| `KafkaConsumerContainer` | `kafka_settings` (`Dependency`), `topics` (`Object(None)`), `consumer` (`Resource`) |
+| `KafkaProducerContainer` | `kafka_settings` (`Dependency`), `topics` (`Object(None)`), `auto_create_topics` (`Object(False)`), `value_serializer` (`Object(None)`), `producer` (`Resource`) |
+| `KafkaConsumerContainer` | `kafka_settings` (`Dependency`), `topics` (`Object(None)`), `value_deserializer` (`Object(None)`), `consumer` (`Resource`) |
 
 Override the dependencies, `await container.init_resources()`, then
 `producer = await container.producer()`; `await container.shutdown_resources()` stops the
@@ -348,8 +354,14 @@ Extra `**kwargs` go straight to the instrumentor.
    `value_serializer=dumps_bytes`, so a `dict` is encoded for you and `bytes` pass through
    untouched. It installs no `key_serializer`, so `key=` must already be `bytes` or
    aiokafka raises. On the consumer side `value_deserializer=loads_bytes` means
-   `message.value` is a decoded object; a topic carrying Avro, protobuf or plain text needs
-   `value_deserializer=lambda raw: raw` or the decode raises inside aiokafka's fetcher.
+   `message.value` is a decoded object, and the decode runs inside aiokafka's fetcher. One
+   value that is not valid JSON — a topic carrying Avro, protobuf or plain text, or a
+   single malformed record on a JSON topic — raises out of `getmany()` / `__anext__` at the
+   same offset on every call, the records fetched with it are lost with the exception, and
+   nothing past it can be committed. Pass `value_deserializer=lambda raw: raw` to
+   `consumer_lifecycle`, the factory, `AsyncKafkaConsumerProvider(...)` or the container's
+   `value_deserializer`, and decode in the handler, where a bad record can be logged and
+   skipped. `value_serializer` replaces `dumps_bytes` the same way on the producer side.
 8. **An `on_started` hook that raises aborts the context.** The hook runs inside the
    `try`/`finally`, so the client is stopped and the hook's exception comes out of the
    `async with` statement itself — the body never runs, and nothing is left connected.

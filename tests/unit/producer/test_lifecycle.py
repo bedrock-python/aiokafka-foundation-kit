@@ -278,3 +278,59 @@ async def test__producer_lifecycle__custom_name__propagates_to_managed_client(pr
 
     # Assert
     assert captured["name"] == "outbox-producer"
+
+
+# ---------------------------------------------------------------------------
+# value_serializer — forwarded to the factory, None keeps dumps_bytes
+# ---------------------------------------------------------------------------
+
+
+async def test__producer_lifecycle__value_serializer__forwarded_to_factory(producer_settings):
+    # Arrange
+    def to_bytes(value: object) -> bytes:
+        return str(value).encode()
+
+    @asynccontextmanager
+    async def mock_managed(client, *, name, on_started=None, on_stopped=None):
+        yield client
+
+    with (
+        patch(
+            "aiokafka_foundation_kit.producer.lifecycle.create_async_kafka_producer",
+            return_value=MagicMock(),
+        ) as mock_factory,
+        patch(
+            "aiokafka_foundation_kit.producer.lifecycle.managed_kafka_client",
+            mock_managed,
+        ),
+    ):
+        # Act
+        async with producer_lifecycle(producer_settings, value_serializer=to_bytes):
+            pass
+
+    # Assert
+    mock_factory.assert_called_once_with(producer_settings, value_serializer=to_bytes)
+
+
+async def test__producer_lifecycle__no_value_serializer__factory_keeps_its_default(producer_settings):
+    # Arrange
+    @asynccontextmanager
+    async def mock_managed(client, *, name, on_started=None, on_stopped=None):
+        yield client
+
+    with (
+        patch(
+            "aiokafka_foundation_kit.producer.lifecycle.create_async_kafka_producer",
+            return_value=MagicMock(),
+        ) as mock_factory,
+        patch(
+            "aiokafka_foundation_kit.producer.lifecycle.managed_kafka_client",
+            mock_managed,
+        ),
+    ):
+        # Act
+        async with producer_lifecycle(producer_settings):
+            pass
+
+    # Assert — None makes create_async_kafka_producer fall back to dumps_bytes
+    mock_factory.assert_called_once_with(producer_settings, value_serializer=None)

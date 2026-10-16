@@ -106,3 +106,61 @@ async def test__async_kafka_producer_provider__get_kafka_producer__passes_topics
 
     # Assert
     assert captured["topics"] is mock_topics
+
+
+# ---------------------------------------------------------------------------
+# value_serializer — a constructor argument, forwarded to producer_lifecycle
+# ---------------------------------------------------------------------------
+
+
+async def test__async_kafka_producer_provider__value_serializer__forwarded_to_lifecycle(
+    producer_settings,
+):
+    # Arrange
+    captured: dict = {}
+
+    def codec(value):
+        return value
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, **kw):
+        captured.update(kw)
+        yield MagicMock()
+
+    provider = AsyncKafkaProducerProvider(value_serializer=codec)
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.di.producer.producer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        async for _ in provider.get_kafka_producer(producer_settings, topics=None):
+            pass
+
+    # Assert
+    assert captured["value_serializer"] is codec
+
+
+async def test__async_kafka_producer_provider__no_value_serializer__passes_none(
+    producer_settings,
+):
+    # Arrange
+    captured: dict = {}
+
+    @asynccontextmanager
+    async def mock_lifecycle(settings, **kw):
+        captured.update(kw)
+        yield MagicMock()
+
+    provider = AsyncKafkaProducerProvider()
+
+    with patch(
+        "aiokafka_foundation_kit.contrib.di.producer.producer_lifecycle",
+        mock_lifecycle,
+    ):
+        # Act
+        async for _ in provider.get_kafka_producer(producer_settings, topics=None):
+            pass
+
+    # Assert
+    assert captured["value_serializer"] is None

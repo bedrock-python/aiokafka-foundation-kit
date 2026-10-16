@@ -237,3 +237,71 @@ async def test__consumer_lifecycle__custom_name__propagates_to_managed_client(co
 
     # Assert
     assert captured["name"] == "inbox-consumer"
+
+
+# ---------------------------------------------------------------------------
+# value_deserializer — forwarded to the factory, None keeps loads_bytes
+# ---------------------------------------------------------------------------
+
+
+async def test__consumer_lifecycle__value_deserializer__forwarded_to_factory(consumer_settings):
+    # Arrange
+    captured: dict = {}
+
+    def raw(value: bytes | None) -> bytes | None:
+        return value
+
+    def factory(settings, topics=None, **kw):
+        captured.update(kw)
+        return MagicMock()
+
+    @asynccontextmanager
+    async def mock_managed(client, *, name, on_started=None, on_stopped=None):
+        yield client
+
+    with (
+        patch(
+            "aiokafka_foundation_kit.consumer.lifecycle.create_async_kafka_consumer",
+            side_effect=factory,
+        ),
+        patch(
+            "aiokafka_foundation_kit.consumer.lifecycle.managed_kafka_client",
+            mock_managed,
+        ),
+    ):
+        # Act
+        async with consumer_lifecycle(consumer_settings, topics=("orders",), value_deserializer=raw):
+            pass
+
+    # Assert
+    assert captured == {"value_deserializer": raw}
+
+
+async def test__consumer_lifecycle__no_value_deserializer__factory_keeps_its_default(consumer_settings):
+    # Arrange
+    captured: dict = {}
+
+    def factory(settings, topics=None, **kw):
+        captured.update(kw)
+        return MagicMock()
+
+    @asynccontextmanager
+    async def mock_managed(client, *, name, on_started=None, on_stopped=None):
+        yield client
+
+    with (
+        patch(
+            "aiokafka_foundation_kit.consumer.lifecycle.create_async_kafka_consumer",
+            side_effect=factory,
+        ),
+        patch(
+            "aiokafka_foundation_kit.consumer.lifecycle.managed_kafka_client",
+            mock_managed,
+        ),
+    ):
+        # Act
+        async with consumer_lifecycle(consumer_settings):
+            pass
+
+    # Assert — None makes create_async_kafka_consumer fall back to loads_bytes
+    assert captured == {"value_deserializer": None}
