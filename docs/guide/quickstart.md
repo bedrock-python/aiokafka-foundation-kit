@@ -156,7 +156,7 @@ Pair this with a `/healthz` HTTP endpoint or a Kubernetes startup probe.
 
 ## Topic management
 
-Create topics idempotently — topics that already exist are logged and skipped silently:
+Create topics idempotently — a topic that already exists is left as it is:
 
 ```python
 from aiokafka_foundation_kit import ensure_topics_async, TopicConfig
@@ -181,7 +181,18 @@ Every other refusal by the broker is raised as the aiokafka error behind it —
 `InvalidReplicationFactorError` when the replication factor is above the broker count,
 `InvalidTopicError` for an unusable name — and the topics after it in the sequence are not
 attempted. An existing topic is never reshaped: a changed partition count or
-`topic_configs` on a topic that is already there does nothing.
+`topic_configs` on a topic that is already there does nothing. It is compared, though —
+the partition count, the replication factor and the keys you put in `topic_configs` — and
+any difference is logged once per topic at `WARNING`:
+
+```text
+Topic 'orders' already exists with num_partitions=3 (TopicConfig asks for 6), retention.ms=604800000 (TopicConfig asks for 3600000); it was left unchanged
+```
+
+Change an existing topic with your cluster's tooling; adding partitions cannot be undone and
+moves keys to other partitions. If the broker refuses to describe the topic — an account
+allowed to create topics but not to describe their configs — that is a `WARNING` too, and
+the call still succeeds.
 
 ### Placing partitions yourself
 

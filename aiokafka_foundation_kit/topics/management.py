@@ -4,7 +4,8 @@ import logging
 from collections.abc import Sequence
 
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
-from aiokafka.errors import TopicAlreadyExistsError, for_code
+from aiokafka.admin.config_resource import ConfigResource, ConfigResourceType
+from aiokafka.errors import KafkaError, TopicAlreadyExistsError, for_code
 from aiokafka.protocol.api import Response
 
 from aiokafka_foundation_kit.config.kafka import KafkaSettingsProtocol
@@ -82,6 +83,83 @@ def _raise_for_topic_errors(response: Response) -> None:
         raise for_code(error_code)(message or f"Broker refused topic {name!r} with error code {error_code}")
 
 
+def _raise_for_error_code(error_code: int, message: str | None, fallback: str) -> None:
+    if error_code != _NO_ERROR:
+        raise for_code(error_code)(message or fallback)
+
+
+def _count_range(counts: set[int]) -> str:
+    return str(min(counts)) if len(counts) == 1 else f"{min(counts)}-{max(counts)}"
+
+
+async def _differences_from_config(admin_client: AIOKafkaAdminClient, topic: TopicConfigProtocol) -> list[str]:
+    """Describe an existing topic and list where it differs from ``topic``.
+
+    The counts come from ``replica_assignment`` when one is given; where the
+    replicas sit is not compared, since a reassignment moves them on purpose.
+    Of the broker-side configs only the keys ``topic_configs`` names are read.
+    """
+    (described,) = await admin_client.describe_topics([topic.name])
+    _raise_for_error_code(described["error_code"], None, f"Broker could not describe topic {topic.name!r}")
+
+    replica_assignment = topic.replica_assignment or None
+    if replica_assignment is not None:
+        wanted_partitions = len(replica_assignment)
+        wanted_factors = {len(replicas) for replicas in replica_assignment.values()}
+    else:
+        wanted_partitions = topic.num_partitions
+        wanted_factors = {topic.replication_factor}
+
+    differences: list[str] = []
+    partitions = described["partitions"]
+    if len(partitions) != wanted_partitions:
+        differences.append(f"num_partitions={len(partitions)} (TopicConfig asks for {wanted_partitions})")
+
+    factors = {len(partition["replicas"]) for partition in partitions}
+    if len(wanted_factors) == 1 and factors and factors != wanted_factors:
+        differences.append(
+            f"replication_factor={_count_range(factors)} (TopicConfig asks for {next(iter(wanted_factors))})"
+        )
+
+    if topic.topic_configs:
+        resource = ConfigResource(ConfigResourceType.TOPIC, topic.name, configs=dict.fromkeys(topic.topic_configs))
+        (response,) = await admin_client.describe_configs([resource])
+        error_code, error_message, _, _, entries = response.resources[0]
+        _raise_for_error_code(error_code, error_message, f"Broker could not describe configs of {topic.name!r}")
+
+        actual = {entry[0]: entry[1] for entry in entries}
+        for key, wanted in topic.topic_configs.items():
+            if key not in actual:
+                differences.append(f"{key} unset (TopicConfig asks for {wanted})")
+            elif actual[key] != wanted:
+                differences.append(f"{key}={actual[key]} (TopicConfig asks for {wanted})")
+
+    return differences
+
+
+async def _report_differences(admin_client: AIOKafkaAdminClient, topic: TopicConfigProtocol) -> None:
+    """Warn when an existing topic is not the one ``topic`` describes; never raise for it.
+
+    A deploy that worked before must keep working, so a describe the broker
+    refuses -- an account allowed to create topics but not to describe their
+    configs -- is a warning too.
+    """
+    try:
+        differences = await _differences_from_config(admin_client, topic)
+    except (KafkaError, OSError, TimeoutError) as error:
+        logger.warning("Could not compare existing topic %r with its TopicConfig: %s", topic.name, error)
+        return
+
+    if differences:
+        logger.warning(
+            "Topic %r already exists with %s; it was left unchanged",
+            topic.name,
+            ", ".join(differences),
+        )
+    else:
+        logger.debug("Topic already exists: %s", topic.name)
+
+
 async def ensure_topics_async(
     topics: Sequence[TopicConfigProtocol],
     settings: KafkaSettingsProtocol,
@@ -95,6 +173,12 @@ async def ensure_topics_async(
     A topic carrying a ``replica_assignment`` is created from that assignment:
     it decides both the partition count and the replication factor, and the
     two count fields may only repeat what it says or be ``-1``.
+
+    A topic that already exists is never changed. It is described instead, and
+    when its partition count, replication factor or any of the keys in
+    ``topic_configs`` differ from the config, one ``WARNING`` names every
+    difference. A describe the broker refuses is logged as a ``WARNING`` and
+    does not fail the call.
 
     Args:
         topics: Sequence of topic configurations to ensure.
@@ -120,6 +204,6 @@ async def ensure_topics_async(
                 _raise_for_topic_errors(response)
                 logger.info("Created topic: %s", topic.name)
             except TopicAlreadyExistsError:
-                logger.debug("Topic already exists: %s", topic.name)
+                await _report_differences(admin_client, topic)
     finally:
         await admin_client.close()

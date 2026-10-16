@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from aiokafka.admin import AIOKafkaAdminClient
 from aiokafka.admin.config_resource import ConfigResource, ConfigResourceType
@@ -108,6 +110,49 @@ async def test__ensure_topics_async__called_twice__second_call_is_a_no_op(
 
     # Assert — and the existing topic is left exactly as it was
     assert len(await _partitions(admin_client, topic_name)) == 3
+
+
+async def test__ensure_topics_async__existing_topic_differs__warns_and_leaves_it_unchanged(
+    kafka_settings: BaseKafkaProducerSettings,
+    admin_client: AIOKafkaAdminClient,
+    topic_name: str,
+    caplog: pytest.LogCaptureFixture,
+):
+    # Arrange — the first deploy creates 3 partitions with the broker's default retention
+    await ensure_topics_async([TopicConfig(name=topic_name, num_partitions=3, replication_factor=1)], kafka_settings)
+    wanted = TopicConfig(
+        name=topic_name, num_partitions=6, replication_factor=1, topic_configs={"retention.ms": "3600000"}
+    )
+
+    # Act — the second deploy asks for 6 partitions and a 1 h retention
+    with caplog.at_level(logging.WARNING, logger="aiokafka_foundation_kit.topics.management"):
+        await ensure_topics_async([wanted], kafka_settings)
+
+    # Assert — one warning that names both differences, and the broker is untouched
+    assert [record.getMessage() for record in caplog.records] == [
+        f"Topic {topic_name!r} already exists with num_partitions=3 (TopicConfig asks for 6), "
+        "retention.ms=604800000 (TopicConfig asks for 3600000); it was left unchanged"
+    ]
+    assert len(await _partitions(admin_client, topic_name)) == 3
+
+
+async def test__ensure_topics_async__existing_topic_matches__logs_no_warning(
+    kafka_settings: BaseKafkaProducerSettings,
+    topic_name: str,
+    caplog: pytest.LogCaptureFixture,
+):
+    # Arrange
+    topic = TopicConfig(
+        name=topic_name, num_partitions=2, replication_factor=1, topic_configs={"retention.ms": "3600000"}
+    )
+    await ensure_topics_async([topic], kafka_settings)
+
+    # Act
+    with caplog.at_level(logging.WARNING, logger="aiokafka_foundation_kit.topics.management"):
+        await ensure_topics_async([topic], kafka_settings)
+
+    # Assert
+    assert caplog.records == []
 
 
 async def test__ensure_topics_async__replication_factor_above_broker_count__propagates(
