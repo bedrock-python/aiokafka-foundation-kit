@@ -80,7 +80,7 @@ Extends `BaseKafkaSettings` + `KafkaAutoCreateMixin`.
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `acks` | `KafkaAcks` | `"all"` | `"0"`, `"1"`, or `"all"` |
+| `acks` | `KafkaAcks` | `"all"` | `"0"`, `"1"`, or `"all"`; `"0"` and `"1"` need `enable_idempotence=False` |
 | `compression_type` | `KafkaCompressionType \| None` | `"gzip"` | `gzip`, `snappy`, `lz4`, `zstd`, or `None` |
 | `enable_idempotence` | `bool` | `True` | Enable exactly-once producer semantics |
 | `max_batch_size` | `int` | `16384` | Maximum batch size in bytes (16 KiB) |
