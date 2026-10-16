@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 async def check_kafka_health_async(settings: KafkaSettingsProtocol, timeout_seconds: float = 5.0) -> bool:
     """Check Kafka cluster health by attempting to connect.
 
+    The probe producer is stopped whether or not it started, so a failed or
+    cancelled probe leaves no connection behind.
+
     Args:
         settings: Kafka settings for connection.
         timeout_seconds: Connection timeout in seconds.
@@ -27,8 +30,10 @@ async def check_kafka_health_async(settings: KafkaSettingsProtocol, timeout_seco
     producer = AIOKafkaProducer(**config)
 
     try:
-        await producer.start()
-        await producer.stop()
+        try:
+            await producer.start()
+        finally:
+            await producer.stop()
     except (TimeoutError, KafkaError, OSError):
         logger.exception("Kafka health check failed")
         return False

@@ -36,10 +36,22 @@ async def managed_kafka_client(
     The client is stopped even when ``on_started`` raises, in which case the
     hook's exception propagates and the body never runs.
 
+    A ``start()`` that raises or is cancelled is followed by ``stop()`` as
+    well: aiokafka connects before it can fail, so a half-started client holds
+    connections and a background task. The start error propagates, neither hook
+    runs, and an error from that ``stop()`` is logged rather than raised.
+
     ``KafkaError`` from ``stop()`` is caught and logged so the caller's original
     exception (if any) is preserved; any other stop error propagates.
     """
-    await client.start()
+    try:
+        await client.start()
+    except BaseException:
+        try:
+            await client.stop()
+        except Exception:
+            logger.exception("Error stopping Kafka %s after a failed start", name)
+        raise
     logger.info("Kafka %s started", name)
 
     try:

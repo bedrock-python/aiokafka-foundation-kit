@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -37,6 +39,84 @@ async def test__managed_kafka_client__happy_path__stops_client_in_finally(mock_k
 
     # Assert
     client.stop.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# start() fails or is cancelled — the half-started client is stopped
+# ---------------------------------------------------------------------------
+
+
+async def test__managed_kafka_client__start_raises__client_is_stopped():
+    # Arrange — aiokafka's start() bootstraps before it can fail, so the client may hold connections
+    client = MagicMock()
+    client.start = AsyncMock(side_effect=KafkaError("topic never appeared"))
+    client.stop = AsyncMock()
+
+    # Act
+    with pytest.raises(KafkaError, match="topic never appeared"):
+        async with managed_kafka_client(client, name="x"):
+            pass
+
+    # Assert
+    client.stop.assert_awaited_once()
+
+
+async def test__managed_kafka_client__start_raises__hooks_are_not_called():
+    # Arrange
+    client = MagicMock()
+    client.start = AsyncMock(side_effect=KafkaError("topic never appeared"))
+    client.stop = AsyncMock()
+    on_started = AsyncMock()
+    on_stopped = AsyncMock()
+
+    # Act
+    with pytest.raises(KafkaError):
+        async with managed_kafka_client(client, name="x", on_started=on_started, on_stopped=on_stopped):
+            pass
+
+    # Assert — the client never started, so neither hook sees it
+    on_started.assert_not_awaited()
+    on_stopped.assert_not_awaited()
+
+
+async def test__managed_kafka_client__start_cancelled__client_is_stopped():
+    # Arrange — start() hangs until the surrounding task is cancelled
+    client = MagicMock()
+    client.start = AsyncMock(side_effect=asyncio.Event().wait)
+    client.stop = AsyncMock()
+
+    async def enter() -> None:
+        async with managed_kafka_client(client, name="x"):
+            pass
+
+    task = asyncio.create_task(enter())
+    await asyncio.sleep(0)
+
+    # Act
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Assert
+    client.stop.assert_awaited_once()
+
+
+async def test__managed_kafka_client__start_and_stop_both_raise__start_error_propagates(caplog):
+    # Arrange
+    client = MagicMock()
+    client.start = AsyncMock(side_effect=KafkaError("start failed"))
+    client.stop = AsyncMock(side_effect=OSError("stop failed"))
+
+    # Act
+    with (
+        caplog.at_level(logging.ERROR, logger="aiokafka_foundation_kit.utils.lifecycle"),
+        pytest.raises(KafkaError, match="start failed"),
+    ):
+        async with managed_kafka_client(client, name="x"):
+            pass
+
+    # Assert — the stop error is logged, not raised over the start error
+    assert [record.getMessage() for record in caplog.records] == ["Error stopping Kafka x after a failed start"]
 
 
 # ---------------------------------------------------------------------------

@@ -19,8 +19,12 @@ from aiokafka_foundation_kit.utils.config import build_kafka_common_config
 
 @pytest.fixture(scope="session")
 def kafka_container() -> Iterator[KafkaContainer]:
-    """One Kafka broker for the whole integration session."""
-    with KafkaContainer() as container:
+    """One Kafka broker for the whole integration session.
+
+    Topic auto-creation is off, as on most production clusters, so a client
+    that waits for a topic nobody created really waits.
+    """
+    with KafkaContainer().with_env("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "false") as container:
         yield container
 
 

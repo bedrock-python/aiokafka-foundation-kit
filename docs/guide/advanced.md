@@ -288,6 +288,12 @@ async with managed_kafka_client(producer, name="producer") as p:
 whether `on_started` raises or not. A `KafkaError` from `stop()` is caught and logged, which
 keeps it from masking the body's own exception; any other error from `stop()` propagates.
 
+A `start()` that raises or is cancelled is followed by `stop()` too. aiokafka connects to
+the cluster before it can fail — a consumer bootstraps, then waits for its topics and its
+group — so a half-started client holds open connections and a metadata task. The start
+error is what comes out of the `async with`; neither `on_started` nor `on_stopped` runs,
+and an error from that `stop()` is logged rather than raised over it.
+
 ---
 
 ## Building the common config dict
