@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from aiokafka import AIOKafkaProducer
 from aiokafka.errors import KafkaError
 
 from aiokafka_foundation_kit.health.checks import check_kafka_health_async
@@ -167,3 +169,68 @@ async def test__check_kafka_health_async__os_error_on_stop__returns_false(
 
     # Assert
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# A failed or cancelled start still stops the producer
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        TimeoutError("timeout"),
+        KafkaError("connection refused"),
+        OSError("network unreachable"),
+    ],
+)
+async def test__check_kafka_health_async__exception_during_start__stops_producer(plaintext_settings, exc: Exception):
+    # Arrange
+    mock_producer = AsyncMock()
+    mock_producer.start = AsyncMock(side_effect=exc)
+    mock_producer.stop = AsyncMock()
+
+    with patch(
+        "aiokafka_foundation_kit.health.checks.AIOKafkaProducer",
+        return_value=mock_producer,
+    ):
+        # Act
+        await check_kafka_health_async(plaintext_settings)
+
+    # Assert
+    mock_producer.stop.assert_awaited_once()
+
+
+async def test__check_kafka_health_async__start_cancelled__stops_producer_and_propagates(plaintext_settings):
+    # Arrange — start() hangs until the probe's task is cancelled
+    mock_producer = AsyncMock()
+    mock_producer.start = AsyncMock(side_effect=asyncio.Event().wait)
+    mock_producer.stop = AsyncMock()
+
+    with patch(
+        "aiokafka_foundation_kit.health.checks.AIOKafkaProducer",
+        return_value=mock_producer,
+    ):
+        task = asyncio.create_task(check_kafka_health_async(plaintext_settings))
+        await asyncio.sleep(0)
+
+        # Act
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    # Assert
+    mock_producer.stop.assert_awaited_once()
+
+
+async def test__check_kafka_health_async__real_producer_nothing_listening__returns_false_and_stops(plaintext_settings):
+    # Arrange — a real aiokafka producer against a port nothing listens on
+    plaintext_settings.bootstrap_servers = "127.0.0.1:1"
+
+    with patch.object(AIOKafkaProducer, "stop", autospec=True, side_effect=AIOKafkaProducer.stop) as stop:
+        # Act
+        result = await check_kafka_health_async(plaintext_settings, timeout_seconds=1.0)
+
+    # Assert — aiokafka's stop() is safe on a producer whose start() failed
+    assert result is False
+    stop.assert_awaited_once()

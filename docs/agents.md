@@ -356,6 +356,10 @@ Extra `**kwargs` go straight to the instrumentor.
 8. **An `on_started` hook that raises aborts the context.** The hook runs inside the
    `try`/`finally`, so the client is stopped and the hook's exception comes out of the
    `async with` statement itself — the body never runs, and nothing is left connected.
+   A `start()` that raises or is cancelled — a consumer waiting for a topic that does not
+   exist, an `asyncio.timeout` around the `async with` — is followed by `stop()` as well:
+   the start error propagates, neither hook runs, and the connections aiokafka opened
+   before failing are closed.
 9. **Only `KafkaError` is swallowed on stop.** `managed_kafka_client` catches
    `KafkaError` from `stop()`, logs it, and skips `on_stopped`; anything else — `OSError`,
    `asyncio.CancelledError`, a `TimeoutError` — propagates out of the context manager and
@@ -400,6 +404,7 @@ Extra `**kwargs` go straight to the instrumentor.
     `timeout_seconds` becomes `request_timeout_ms`, not an `asyncio.timeout` around the
     call — a DNS or TCP stall can outlast it. It returns `False` (and logs a traceback at
     `ERROR`) for `TimeoutError`, `KafkaError` and `OSError`, and lets anything else out.
+    The probe producer is stopped in every case, including a failed or cancelled start.
     It is a probe, not a cheap one; do not call it per request.
 17. **A `topic_prefix` joins with a dot** — `prefix` + `"."` + `name` — and only
     `KafkaInfraProvider` applies it. `TopicConfig.name` and the topic names you hand
