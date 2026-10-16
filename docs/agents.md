@@ -65,7 +65,8 @@ Four nouns:
   also run `ensure_topics_async` first.
 * **Topics** — `TopicConfig` is a frozen dataclass describing one topic;
   `ensure_topics_async(topics, settings)` creates each one, reads the broker's per-topic
-  reply, and treats an existing topic as success.
+  reply, and treats an existing topic as success — logging a `WARNING` when its shape
+  differs from the config.
 
 The contrib packages are three thin wrappers over that: `contrib.di` for dishka providers,
 `contrib.dependency_injector` for declarative containers, `contrib.telemetry` for one call
@@ -399,12 +400,18 @@ Extra `**kwargs` go straight to the instrumentor.
     and your per-batch work has to finish inside `max_poll_interval_ms` (300 s by default)
     or the broker evicts the member and the partitions rebalance under you.
 14. **`ensure_topics_async` tolerates exactly one failure.** Each topic is created on its
-    own, and the broker's answer for it is read: an existing topic is logged at `DEBUG`
-    and ignored, every other refusal is raised as the aiokafka error for that error code —
+    own, and the broker's answer for it is read: an existing topic is success, every other
+    refusal is raised as the aiokafka error for that error code —
     `InvalidReplicationFactorError` for a `replication_factor` above the broker count,
     `InvalidTopicError` for an unusable name — and aborts the rest of the sequence. It
     also never *changes* an existing topic: partition counts and `topic_configs` of a
-    topic that already exists are left alone.
+    topic that already exists are left alone. It compares them instead — the partition
+    count, the replication factor (both from `replica_assignment` when one is given) and
+    only the keys named in `topic_configs` — and logs one `WARNING` per topic naming every
+    difference, `Topic 'orders' already exists with num_partitions=3 (TopicConfig asks for
+    6); it was left unchanged`. A matching topic is logged at `DEBUG`. A describe the
+    broker refuses is a `WARNING` (`Could not compare existing topic …`), never an
+    exception. Read those warnings at deploy time; the call returns normally either way.
 15. **A `replica_assignment` decides the shape of the topic.** Give one and it fixes both
     the partition count and the replication factor; `num_partitions` and
     `replication_factor` may then only repeat what it says (`num_partitions ==
