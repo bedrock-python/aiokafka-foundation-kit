@@ -1,0 +1,13 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: d9d0a6f
+_src_path: gh:bedrock-python/python-library-template
+author_email: shalaevad.alexey@gmail.com
+author_name: Alexey Shalaev
+github_org: bedrock-python
+initial_version: 0.0.0
+package_name: aiokafka_foundation_kit
+project_description: Async Kafka foundation library — factories, settings, DI providers
+    and OpenTelemetry on top of aiokafka
+project_name: aiokafka-foundation-kit
+project_slug: aiokafka-foundation-kit
+python_min_version: '3.11'
